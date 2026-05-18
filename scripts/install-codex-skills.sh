@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PLUGIN_SKILLS_DIR="$ROOT_DIR/plugins/nav-center/skills"
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 DEST_ROOT="$CODEX_HOME_DIR/skills"
 
@@ -11,7 +12,7 @@ skills=(
 )
 
 for skill in "${skills[@]}"; do
-  src="$ROOT_DIR/skills/$skill/SKILL.md"
+  src="$PLUGIN_SKILLS_DIR/$skill/SKILL.md"
   dest="$DEST_ROOT/$skill"
 
   if [[ ! -f "$src" ]]; then

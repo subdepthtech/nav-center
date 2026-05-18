@@ -32,9 +32,11 @@ Use the Overview setup panel to import resumes, evaluations, education records, 
 
 Do not treat generated resume data as final until the imported Markdown and `master-resumes/master_primary.yaml` have been reviewed.
 
-## Codex Skills
+## Codex Plugin Skills
 
-From the source tree, install the beta helper skills with:
+Install the `Nav Center` plugin from the Codex marketplace to make the beta helper skills available from this public repository. The plugin package lives at `plugins/nav-center` so marketplace installation only receives the skill files, not the full app source tree.
+
+For development from a source checkout, install the same packaged skills directly with:
 
 ```sh
 scripts/install-codex-skills.sh

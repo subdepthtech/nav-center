@@ -1,0 +1,17 @@
+{
+  "name": "nav-center",
+  "description": "Skills for Nav Center beta onboarding, local workspace setup, diagnostics, and feedback drafting.",
+  "author": {
+    "name": "SubDepthTech"
+  },
+  "homepage": "https://github.com/subdepthtech/nav-center",
+  "repository": "https://github.com/subdepthtech/nav-center",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "nav-center",
+    "macos",
+    "job-search",
+    "beta-feedback"
+  ]
+}

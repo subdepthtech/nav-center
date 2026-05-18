@@ -69,7 +69,16 @@ feedback/
 
 See [docs/BETA.md](docs/BETA.md) for install, onboarding, feedback, and uninstall guidance.
 
-Install the Codex beta helper skills from a source checkout with:
+## Codex Plugin Skills
+
+Nav Center publishes its beta helper skills as a Codex plugin from this public repository. The marketplace plugin root is [`plugins/nav-center`](plugins/nav-center), which keeps the installable package limited to the skill manifests and skill files.
+
+Install the `Nav Center` plugin from the Codex marketplace to make these skills available:
+
+- `nav-center-codex-setup`: first-run setup, workspace preparation, document intake, master resume review, Codex connection checks, and paused automation setup.
+- `nav-center-beta-feedback`: redacted beta feedback and diagnostic report drafting.
+
+For development from a source checkout, install the same packaged skills directly with:
 
 ```sh
 scripts/install-codex-skills.sh

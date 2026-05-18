@@ -1,0 +1,42 @@
+{
+  "name": "nav-center",
+  "version": "0.1.0-beta",
+  "description": "Codex skills for Nav Center beta onboarding, local workspace setup, diagnostics, and feedback drafting.",
+  "author": {
+    "name": "SubDepthTech",
+    "url": "https://github.com/subdepthtech"
+  },
+  "homepage": "https://github.com/subdepthtech/nav-center",
+  "repository": "https://github.com/subdepthtech/nav-center",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "skills",
+    "nav-center",
+    "macos",
+    "job-search",
+    "beta-feedback"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Nav Center",
+    "shortDescription": "Install Nav Center beta support skills",
+    "longDescription": "Codex skills for helping Nav Center beta users install the app, initialize a local workspace, import approved documents, prepare review-first master resume drafts, check Codex connectivity, and draft redacted beta feedback.",
+    "developerName": "SubDepthTech",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/subdepthtech/nav-center",
+    "privacyPolicyURL": "https://github.com/subdepthtech/nav-center/blob/main/SECURITY.md",
+    "termsOfServiceURL": "https://github.com/subdepthtech/nav-center/blob/main/LICENSE",
+    "defaultPrompt": [
+      "Use nav-center-codex-setup to help a beta tester verify the Nav Center install and initialize a local workspace.",
+      "Use nav-center-codex-setup to import approved resume, education, certification, and evaluation documents into Nav Center.",
+      "Use nav-center-beta-feedback to draft a redacted beta feedback report from tester notes and diagnostics."
+    ],
+    "brandColor": "#2563EB",
+    "screenshots": []
+  }
+}
