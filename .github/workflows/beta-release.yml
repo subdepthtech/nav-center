@@ -1,0 +1,39 @@
+name: Beta Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Beta version, for example 0.1.0-beta
+        required: true
+        default: 0.1.0-beta
+
+permissions:
+  contents: write
+
+jobs:
+  beta-dmg:
+    name: Build beta DMG
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test
+        run: swift test
+
+      - name: Build beta DMG
+        env:
+          NAV_CENTER_VERSION: ${{ inputs.version }}
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+        run: scripts/package-beta-dmg.sh
+
+      - name: Upload beta artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nav-center-beta-${{ inputs.version }}
+          path: |
+            dist/NavCenter-${{ inputs.version }}-macos-*.dmg
+            dist/NavCenter-${{ inputs.version }}-macos-*.dmg.sha256

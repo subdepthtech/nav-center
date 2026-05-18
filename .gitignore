@@ -1,0 +1,24 @@
+.DS_Store
+.build/
+dist/
+*.log
+*.tmp
+output/
+tmp/
+
+# Local/private workspace data
+workspace/
+imports/
+feedback/
+logs/
+tracking/*.sqlite
+tracking/*.sqlite-*
+applications/*/artifacts/*.pdf
+applications/*/artifacts/*.docx
+applications/*/artifacts/*.html
+applications/*/artifacts/*.txt
+
+# Keep sample source files and non-sensitive sample JSON.
+!applications/**/*.md
+!applications/**/artifacts/*.json
+!master-resumes/*.yaml

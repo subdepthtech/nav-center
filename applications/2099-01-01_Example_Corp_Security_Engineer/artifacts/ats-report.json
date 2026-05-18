@@ -1,0 +1,6 @@
+{
+  "package": "2099-01-01_Example_Corp_Security_Engineer",
+  "score": 88,
+  "matched": ["cloud security", "vulnerability management", "incident response", "compliance"],
+  "missing": []
+}

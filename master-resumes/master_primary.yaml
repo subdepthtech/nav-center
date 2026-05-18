@@ -1,0 +1,10 @@
+profile:
+  name: Example Candidate
+  title: Security Engineer
+summary:
+  - Local-only sample resume data for Nav Center development.
+skills:
+  - Cloud security
+  - Vulnerability management
+  - Incident response
+  - Compliance workflows
