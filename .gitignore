@@ -6,6 +6,9 @@ dist/
 output/
 tmp/
 
+# Local agent instructions
+AGENTS.md
+
 # Local/private workspace data
 workspace/
 imports/
