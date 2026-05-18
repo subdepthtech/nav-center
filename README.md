@@ -75,6 +75,33 @@ Install the Codex beta helper skills from a source checkout with:
 scripts/install-codex-skills.sh
 ```
 
+## Homebrew Install
+
+After the Homebrew tap is published, install Nav Center with:
+
+```sh
+brew tap subdepthtech/tap
+brew install --cask nav-center
+```
+
+For a private or local cask file generated during release prep:
+
+```sh
+brew install --cask /path/to/homebrew-tap/Casks/nav-center.rb
+```
+
+Uninstall the app with:
+
+```sh
+brew uninstall --cask nav-center
+```
+
+Remove the app and local Nav Center support files with:
+
+```sh
+brew uninstall --cask --zap nav-center
+```
+
 ## Release
 
 Create a private beta DMG with:

@@ -9,80 +9,82 @@ struct ContentView: View {
     @State private var showingCodex = false
 
     var body: some View {
-        NavigationSplitView {
-            List(DashboardDestination.allCases, selection: sidebarSelection) { destination in
-                Label(destination.title, systemImage: destination.systemImage)
-                    .tag(destination)
-            }
-            .listStyle(.sidebar)
-            .navigationTitle("Nav Center")
-
-            VStack(alignment: .leading, spacing: 8) {
-                LocalOnlyPill()
-                if let url = store.repoRootURL {
-                    Text(url.path)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+        ZStack(alignment: .bottomTrailing) {
+            NavigationSplitView {
+                List(DashboardDestination.allCases, selection: sidebarSelection) { destination in
+                    Label(destination.title, systemImage: destination.systemImage)
+                        .tag(destination)
                 }
-            }
-            .padding()
-        } detail: {
-            ZStack {
-                if store.selectedPackage != nil {
-                    PackageDetailView()
-                } else {
-                    switch selection {
-                    case .overview:
-                        OverviewView()
-                    case .applications:
-                        ApplicationsView()
-                    case .packages:
-                        PackagesWorkspaceView()
-                    case .searches:
-                        JobSearchesWorkspaceView()
-                    case .resume:
-                        MasterResumeWorkspaceView()
-                    case .exports:
-                        ExportsWorkspaceView()
-                    case .settings:
-                        SettingsWorkspaceView()
+                .listStyle(.sidebar)
+                .navigationTitle("Nav Center")
+
+                VStack(alignment: .leading, spacing: 8) {
+                    LocalOnlyPill()
+                    if let url = store.repoRootURL {
+                        Text(url.path)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
-
-                if store.isLoading && store.summary == nil {
-                    ProgressView("Loading local dashboard...")
-                        .padding()
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-                }
-            }
-            .toolbar {
-                ToolbarItemGroup {
-                    TextField("Search dashboard", text: $dashboardSearch)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
-
-                    Button {
-                        Task { await store.refresh() }
-                    } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
+                .padding()
+            } detail: {
+                ZStack {
+                    if store.selectedPackage != nil {
+                        PackageDetailView()
+                    } else {
+                        switch selection {
+                        case .overview:
+                            OverviewView()
+                        case .applications:
+                            ApplicationsView()
+                        case .packages:
+                            PackagesWorkspaceView()
+                        case .searches:
+                            JobSearchesWorkspaceView()
+                        case .resume:
+                            MasterResumeWorkspaceView()
+                        case .exports:
+                            ExportsWorkspaceView()
+                        case .settings:
+                            SettingsWorkspaceView()
+                        }
                     }
-                    .help("Refresh local tracker and package data")
-                    .disabled(store.isLoading)
+
+                    if store.isLoading && store.summary == nil {
+                        ProgressView("Loading local dashboard...")
+                            .padding()
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+                .toolbar {
+                    ToolbarItemGroup {
+                        TextField("Search dashboard", text: $dashboardSearch)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
+
+                        Button {
+                            Task { await store.refresh() }
+                        } label: {
+                            Label("Refresh", systemImage: "arrow.clockwise")
+                        }
+                        .help("Refresh local tracker and package data")
+                        .disabled(store.isLoading)
+                    }
+                }
+                .alert("Dashboard Error", isPresented: errorBinding) {
+                    Button("OK") {
+                        store.errorMessage = nil
+                    }
+                } message: {
+                    Text(store.errorMessage ?? "")
                 }
             }
-            .alert("Dashboard Error", isPresented: errorBinding) {
-                Button("OK") {
-                    store.errorMessage = nil
-                }
-            } message: {
-                Text(store.errorMessage ?? "")
-            }
-            .overlay(alignment: .bottomTrailing) {
-                CodexChatLauncher(isPresented: $showingCodex)
-                    .environmentObject(store)
-                    .padding(22)
-            }
+
+            CodexChatLauncher(isPresented: $showingCodex)
+                .environmentObject(store)
+                .padding(22)
+                .zIndex(1)
         }
     }
 
@@ -440,56 +442,74 @@ private struct JobDescriptionPastePanel: View {
     }
 }
 
+enum MasterResumeEditorLayout {
+    static let minimumEditorHeight: CGFloat = 320
+    static let maximumEditorHeight: CGFloat = 620
+    static let verticalChromeHeight: CGFloat = 190
+    static let floatingLauncherClearance: CGFloat = 96
+
+    static func editorHeight(forViewportHeight viewportHeight: CGFloat) -> CGFloat {
+        let availableHeight = viewportHeight - verticalChromeHeight - floatingLauncherClearance
+        return min(max(availableHeight, minimumEditorHeight), maximumEditorHeight)
+    }
+}
+
 private struct MasterResumeWorkspaceView: View {
     @EnvironmentObject private var store: DashboardStore
     @State private var didLoad = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HeaderBlock(title: "Master Resume", subtitle: "Edit the canonical local YAML used for package tailoring.")
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HeaderBlock(title: "Master Resume", subtitle: "Edit the canonical local YAML used for package tailoring.")
 
-            Panel("Editor") {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 10) {
-                        Button {
-                            Task { await store.loadMasterResume() }
-                        } label: {
-                            Label("Reload", systemImage: "arrow.clockwise")
+                    Panel("Editor") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 10) {
+                                Button {
+                                    Task { await store.loadMasterResume() }
+                                } label: {
+                                    Label("Reload", systemImage: "arrow.clockwise")
+                                }
+                                .disabled(store.isLoadingMasterResume || store.isSavingMasterResume)
+
+                                Button {
+                                    Task { await store.saveMasterResume() }
+                                } label: {
+                                    Label("Save", systemImage: "square.and.arrow.down")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(store.masterResumeContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isLoadingMasterResume || store.isSavingMasterResume)
+
+                                if let snapshot = store.masterResumeSnapshot {
+                                    Text(snapshot.relativePath)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+
+                            TextEditor(text: $store.masterResumeContent)
+                                .font(.system(.body, design: .monospaced))
+                                .frame(height: MasterResumeEditorLayout.editorHeight(forViewportHeight: proxy.size.height))
+                                .scrollContentBackground(.hidden)
+                                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+
+                            if let message = store.masterResumeMessage {
+                                Text(message)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
-                        .disabled(store.isLoadingMasterResume || store.isSavingMasterResume)
-
-                        Button {
-                            Task { await store.saveMasterResume() }
-                        } label: {
-                            Label("Save", systemImage: "square.and.arrow.down")
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(store.masterResumeContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isLoadingMasterResume || store.isSavingMasterResume)
-
-                        if let snapshot = store.masterResumeSnapshot {
-                            Text(snapshot.relativePath)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    TextEditor(text: $store.masterResumeContent)
-                        .font(.system(.body, design: .monospaced))
-                        .frame(minHeight: 520)
-                        .scrollContentBackground(.hidden)
-                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-
-                    if let message = store.masterResumeMessage {
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
                 }
+                .padding(24)
+                .padding(.bottom, MasterResumeEditorLayout.floatingLauncherClearance)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .textBackgroundColor))
         .task {
             guard !didLoad else { return }
