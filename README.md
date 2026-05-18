@@ -77,17 +77,28 @@ scripts/install-codex-skills.sh
 
 ## Homebrew Install
 
-After the Homebrew tap is published, install Nav Center with:
+Friends and family beta builds are distributed through the `subdepthtech/nav-center` Homebrew tap. The cask downloads a private GitHub release asset, so export a GitHub token with access to `subdepthtech/nav-center` before installing:
 
 ```sh
-brew tap subdepthtech/tap
+export HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)"
+brew tap subdepthtech/nav-center
 brew install --cask nav-center
 ```
+
+Do not pass the `git@github.com:subdepthtech/homebrew-nav-center.git` SSH URL unless the tester has SSH access configured for that repo. The one-argument tap command above uses GitHub over HTTPS.
 
 For a private or local cask file generated during release prep:
 
 ```sh
 brew install --cask /path/to/homebrew-tap/Casks/nav-center.rb
+```
+
+Upgrade with:
+
+```sh
+export HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)"
+brew update
+brew upgrade --cask nav-center
 ```
 
 Uninstall the app with:
