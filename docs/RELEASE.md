@@ -1,6 +1,6 @@
 # Release
 
-Nav Center beta releases use a private DMG first. Keep public GitHub and Homebrew publication gated until beta feedback, public hygiene checks, signing, and notarization pass.
+Nav Center beta releases ship through GitHub Releases and the public Homebrew tap after public hygiene checks, signing, and notarization pass.
 
 ## Local Beta DMG
 

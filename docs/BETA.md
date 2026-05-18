@@ -60,7 +60,7 @@ Feedback drafts should not include private resume content, exact private file pa
 ## Known Beta Limits
 
 - PDF and DOCX import keeps originals and creates review notes; rich extraction may require manual paste/review.
-- Homebrew cask wiring is release-ready but public tap publication is not assumed for friends/family beta.
+- Homebrew installs use the public `subdepthtech/nav-center` tap.
 - The nightly job-package automation is created paused by default.
 - Codex package edits require explicit user confirmation.
 

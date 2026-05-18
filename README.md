@@ -6,7 +6,7 @@ Nav Center is local-first. It reads a workspace on disk, binds no public network
 
 ## Status
 
-This is an extracted public-ready source tree from a private workflow. The next release target is a friends and family beta. The repository contains source code, tests, public docs, beta setup skills, release scripts, and a small synthetic sample workspace only. It does not include private resumes, application history, tracker databases, vault mirrors, generated PDFs, or local account data.
+This is an extracted public-ready source tree from a private workflow. The repository contains source code, tests, public docs, beta setup skills, release scripts, and a small synthetic sample workspace only. It does not include private resumes, application history, tracker databases, vault mirrors, generated PDFs, or local account data.
 
 ## Requirements
 
@@ -77,23 +77,12 @@ scripts/install-codex-skills.sh
 
 ## Homebrew Install
 
-Friends and family beta builds are distributed through the `subdepthtech/nav-center` Homebrew tap. The cask downloads a private GitHub release asset, so export a GitHub token with access to `subdepthtech/nav-center` before installing:
+Beta builds are distributed through the public `subdepthtech/nav-center` Homebrew tap:
 
 ```sh
-export HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)"
 brew tap subdepthtech/nav-center
 brew install --cask nav-center
 ```
-
-If the download fails with `401`, verify the tester is signed in with a GitHub account that has access to the private release asset:
-
-```sh
-gh auth status
-gh repo view subdepthtech/nav-center
-HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew install --cask nav-center
-```
-
-If `gh repo view subdepthtech/nav-center` returns `not found` or `HTTP 404`, add that GitHub account to the private `subdepthtech/nav-center` repo or use a public DMG instead.
 
 Do not pass the `git@github.com:subdepthtech/homebrew-nav-center.git` SSH URL unless the tester has SSH access configured for that repo. The one-argument tap command above uses GitHub over HTTPS.
 
@@ -106,7 +95,6 @@ brew install --cask /path/to/homebrew-tap/Casks/nav-center.rb
 Upgrade with:
 
 ```sh
-export HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)"
 brew update
 brew upgrade --cask nav-center
 ```
@@ -125,7 +113,7 @@ brew uninstall --cask --zap nav-center
 
 ## Release
 
-Create a private beta DMG with:
+Create a beta DMG with:
 
 ```sh
 NAV_CENTER_VERSION=0.1.0-beta scripts/package-beta-dmg.sh

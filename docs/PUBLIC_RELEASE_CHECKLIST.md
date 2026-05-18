@@ -51,4 +51,4 @@ NavCenter-0.1.0-beta-macos-arm64.dmg.sha256
 
 Do not publish a signed app until Developer ID signing, notarization, stapling, and Gatekeeper validation are wired.
 
-Friends/family beta releases should stay prerelease/private until beta feedback and privacy checks pass.
+Friends/family beta releases should stay prerelease until beta feedback and privacy checks pass.
