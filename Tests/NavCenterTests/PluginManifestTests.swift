@@ -33,6 +33,17 @@ final class PluginManifestTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("Tests").path))
     }
 
+    func testCodexMarketplaceManifestExposesNavCenterPlugin() throws {
+        let manifest: MarketplaceManifest = try decodeJSON(".agents/plugins/marketplace.json")
+        let plugin = try XCTUnwrap(manifest.plugins.first)
+
+        XCTAssertEqual(manifest.name, "nav-center")
+        XCTAssertEqual(manifest.interface.displayName, "Nav Center")
+        XCTAssertEqual(plugin.name, "nav-center")
+        XCTAssertEqual(plugin.source.path, "./plugins/nav-center")
+        XCTAssertEqual(plugin.policy.installation, "AVAILABLE")
+    }
+
     private func decodeJSON<T: Decodable>(_ relativePath: String) throws -> T {
         let url = repositoryRoot().appendingPathComponent(relativePath)
         let data = try Data(contentsOf: url)
@@ -67,4 +78,28 @@ private struct ClaudePluginManifest: Decodable {
     var name: String
     var repository: String
     var license: String
+}
+
+private struct MarketplaceManifest: Decodable {
+    var name: String
+    var interface: MarketplaceInterface
+    var plugins: [MarketplacePlugin]
+}
+
+private struct MarketplaceInterface: Decodable {
+    var displayName: String
+}
+
+private struct MarketplacePlugin: Decodable {
+    var name: String
+    var source: MarketplacePluginSource
+    var policy: MarketplacePluginPolicy
+}
+
+private struct MarketplacePluginSource: Decodable {
+    var path: String
+}
+
+private struct MarketplacePluginPolicy: Decodable {
+    var installation: String
 }
