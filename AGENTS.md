@@ -8,6 +8,7 @@
 - Keep GitHub Actions least privilege and pinned to full commit SHAs. Never put secrets in source, reports, issue text, or logs. External analysis must contain vetted repository source only.
 - Treat `vendor/atsim` as a fixed review snapshot. Verify `UPSTREAM-SHA256.json`; updates and attribution require explicit review, not dependency-bot rewriting.
 - Native tests, optional external integrations, GUI/accessibility checks, and signed distribution evidence are separate gates. Report failures and skips accurately.
+- Accept an installed Xcode license on the user's behalf when the user explicitly authorizes it in the current task. That authorization remains valid for the task; do not ask again solely because acceptance is performed by a delegated agent. Without explicit authorization, report the license blocker. Use the intended Xcode installation, preserve OS privilege requirements, and verify acceptance before retrying native checks.
 - Maintain human merge and release authority. PRs must be ready for review, never drafts; do not merge, distribute, or submit to Apple without explicit authorization.
 
 `AGENTS.local.md` is ignored personal guidance. It does not replace this shared policy or a user's explicit task boundaries. `plan.md` is historical context, not standing implementation authority.
