@@ -33,6 +33,8 @@ A source revision alone does not identify uncommitted changes: retain the workin
 ## Standard checks
 
 ```bash
+# CI checks the committed range; git diff --check only sees uncommitted work.
+git log --format= --check --diff-merges=remerge "$(git merge-base main HEAD)..HEAD"
 git diff --check
 for nav_script in scripts/*.sh; do bash -n "$nav_script"; done
 python3 -B -m unittest discover -s scripts/tests -v

@@ -30,7 +30,7 @@ NAVCENTERCTL="$(swift build --show-bin-path)/navcenterctl" python3 -B scripts/te
 python3 -B -m unittest discover -s scripts/tests -v     # release scripts, fully stubbed/offline
 ```
 
-The full CI gate (`.github/workflows/ci.yml`) also runs `git diff --check`, `bash -n scripts/*.sh`, and `swift test --sanitize=address` / `--sanitize=thread` with separate `--scratch-path`s. Run those before claiming release readiness.
+The full CI gate (`.github/workflows/ci.yml`) also runs `git log --format= --check --diff-merges=remerge <range>` over the committed range, `bash -n scripts/*.sh`, and `swift test --sanitize=address` / `--sanitize=thread` with separate `--scratch-path`s. That committed-range check is not `git diff --check`, which only inspects the working tree and passes on a clean checkout. Run those before claiming release readiness.
 
 Packaging: `NAV_CENTER_VERSION=0.1.0-beta.1 NAV_CENTER_BUILD=1 scripts/package-beta-dmg.sh --local` produces an unsigned DMG; `--distribution` requires signing/notarization secrets and Gitleaks (see `docs/RELEASE.md`). Never treat an `-unsigned.dmg` as distributable.
 

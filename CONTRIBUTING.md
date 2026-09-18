@@ -9,6 +9,8 @@ Run these before opening a pull request:
 ```sh
 swift test
 swift build
+# CI checks the committed range; git diff --check only sees uncommitted work.
+git log --format= --check --diff-merges=remerge "$(git merge-base main HEAD)..HEAD"
 git diff --check
 ```
 
