@@ -65,12 +65,19 @@ public final class TrackerStore {
         let result: TrackerStatusUpdateResult = try connection.transaction {
             if !existed { try connection.createSchema() }
             try connection.validateSchema()
-            let matches = try connection.rows("select * from applications where application_dir = \(SQLiteSupport.quote("applications/" + packageName)) or id = \(SQLiteSupport.quote(trackerID(packageName: packageName)));")
+            let applicationDir = "applications/" + packageName
+            let expectedID = trackerID(packageName: packageName)
+            let matches = try connection.rows("select * from applications where application_dir = \(SQLiteSupport.quote(applicationDir));")
             guard matches.count <= 1 else {
                 throw NavCenterError.invalidPath("Multiple tracker records refer to this package. Resolve the duplicate records before changing status.")
             }
             let row = matches.first
-            let applicationID = row.map { SQLiteSupport.string($0["id"]) } ?? trackerID(packageName: packageName)
+            if row == nil,
+               let collision = try connection.rows("select application_dir from applications where id = \(SQLiteSupport.quote(expectedID));").first {
+                let owner = SQLiteSupport.string(collision["application_dir"]).nonEmpty ?? "a tracker record with no application directory"
+                throw NavCenterError.invalidPath("Tracker ID '\(expectedID)' is already used by \(owner). Rename one package or resolve the tracker record before changing status.")
+            }
+            let applicationID = row.map { SQLiteSupport.string($0["id"]) } ?? expectedID
             let oldStatus = row.map { SQLiteSupport.string($0["status"]) } ?? ""
             if row == nil {
                 let package = try packageDefaults(packageName: packageName, applicationID: applicationID, status: status.rawValue, changedAt: changedAt)
@@ -79,7 +86,7 @@ public final class TrackerStore {
                 values (\(SQLiteSupport.quote(package.id)), \(SQLiteSupport.quote(package.date)), \(SQLiteSupport.quote(package.company)), \(SQLiteSupport.quote(package.position)), \(SQLiteSupport.quote(package.applyLink)), '', '', \(SQLiteSupport.quote(status.rawValue)), \(SQLiteSupport.quote(package.notes)), '', \(SQLiteSupport.quote(package.applicationDir)), \(SQLiteSupport.quote(changedAt)), \(SQLiteSupport.quote(changedAt)));
                 """)
             } else {
-                try connection.execute("update applications set status = \(SQLiteSupport.quote(status.rawValue)), updated_at = \(SQLiteSupport.quote(changedAt)) where id = \(SQLiteSupport.quote(applicationID));")
+                try connection.execute("update applications set status = \(SQLiteSupport.quote(status.rawValue)), updated_at = \(SQLiteSupport.quote(changedAt)) where id = \(SQLiteSupport.quote(applicationID)) and application_dir = \(SQLiteSupport.quote(applicationDir));")
             }
             try connection.execute("insert into status_events (application_id, old_status, new_status, changed_at) values (\(SQLiteSupport.quote(applicationID)), \(SQLiteSupport.quote(oldStatus)), \(SQLiteSupport.quote(status.rawValue)), \(SQLiteSupport.quote(changedAt)));")
             return TrackerStatusUpdateResult(applicationID: applicationID, packageName: packageName, oldStatus: oldStatus, newStatus: status.rawValue, changedAt: changedAt)
@@ -112,32 +119,6 @@ public final class TrackerStore {
         order by date, company, position;
         """
         return try SQLiteSupport.jsonRows(dbPath: dbPath, repoRoot: repoRoot, sql: sql).map { row in
-            TrackerApplicationRow(
-                id: SQLiteSupport.string(row["id"]),
-                date: SQLiteSupport.string(row["date"]),
-                company: SQLiteSupport.string(row["company"]),
-                position: SQLiteSupport.string(row["position"]),
-                applyLink: SQLiteSupport.string(row["applyLink"]),
-                resumeFiles: SQLiteSupport.string(row["resumeFiles"]),
-                coverLetterFiles: SQLiteSupport.string(row["coverLetterFiles"]),
-                status: SQLiteSupport.string(row["status"]),
-                notes: SQLiteSupport.string(row["notes"]),
-                nextActionDate: SQLiteSupport.string(row["nextActionDate"]),
-                applicationDir: SQLiteSupport.string(row["applicationDir"])
-            )
-        }
-    }
-
-    private func rowForPackage(_ packageName: String) throws -> TrackerApplicationRow? {
-        let id = trackerID(packageName: packageName)
-        let applicationDir = "applications/\(packageName)"
-        let sql = """
-        select id, date, company, position, apply_link as applyLink, resume_files as resumeFiles, cover_letter_files as coverLetterFiles, status, notes, next_action_date as nextActionDate, application_dir as applicationDir
-        from applications
-        where application_dir = \(SQLiteSupport.quote(applicationDir)) or id = \(SQLiteSupport.quote(id))
-        limit 1;
-        """
-        return try SQLiteSupport.jsonRows(dbPath: dbPath, repoRoot: repoRoot, sql: sql).first.map { row in
             TrackerApplicationRow(
                 id: SQLiteSupport.string(row["id"]),
                 date: SQLiteSupport.string(row["date"]),
