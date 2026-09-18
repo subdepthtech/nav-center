@@ -1,0 +1,10 @@
+# Verified repository administrator; review routing does not grant merge authority.
+# Add an independent release/code owner only after that person is confirmed.
+* @austinkennethtucker
+/.github/ @austinkennethtucker
+/scripts/ @austinkennethtucker
+/AGENTS.md @austinkennethtucker
+/SECURITY.md @austinkennethtucker
+/Package.swift @austinkennethtucker
+/vendor/ @austinkennethtucker
+/sonar-project.properties @austinkennethtucker

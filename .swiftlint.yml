@@ -1,0 +1,16 @@
+# Correctness checks only; swift-format owns whitespace and style.
+only_rules:
+  - duplicate_conditions
+  - identical_operands
+  - duplicated_key_in_dictionary_literal
+  - force_cast
+  - force_try
+included:
+  - Sources
+excluded:
+  - vendor
+  - .build
+  - .tools
+  - reports
+strict: true
+reporter: json

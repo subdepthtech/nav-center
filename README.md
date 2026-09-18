@@ -21,6 +21,8 @@ This is a beta source tree extracted from a private workflow. The repository con
 
 ## Build
 
+Development guidance: [architecture](docs/ARCHITECTURE.md), [testing](docs/TESTING.md), [tooling runbook](docs/TOOLING.md), and [setup status](docs/SETUP.md). Shared agent policy is in [AGENTS.md](AGENTS.md).
+
 ```sh
 swift build
 swift test

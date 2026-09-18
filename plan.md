@@ -1,6 +1,6 @@
 # Nav Center Codex Managed Mode and Beta Reliability Implementation Plan
 
-> **For Codex agents:** Implement this plan task-by-task in order. Use the checkbox (`- [ ]`) steps for tracking, keep commits scoped to each task, and run the listed verification commands before marking a task complete.
+> **Historical product plan.** Retained for design history; the tasks below are not standing implementation instructions or a statement of current completion. Repository management and development-tool setup are governed by [docs/SETUP.md](docs/SETUP.md). Reconcile any future product task with the current source and explicit user scope before implementation.
 
 **Goal:** Update Nav Center so the in-app assistant uses Codex managed ChatGPT login through `codex app-server`, presents accurate auth choices, and removes the beta setup failures around missing Codex versions, package artifacts, export dependencies, and ATS tooling.
 

@@ -1,0 +1,96 @@
+{
+  "observed_at_utc": "2026-09-16T00:53:28.190232+00:00",
+  "repository": "subdepthtech/nav-center",
+  "source_head": "0555cb0483f98de44e6c32a1a1cdd270d50a1abf",
+  "access_used": "Existing GitHub CLI account austinkennethtucker, verified repository administrator; no new token or organization grant",
+  "workflow_permissions": {
+    "default_workflow_permissions": "read",
+    "can_approve_pull_request_reviews": false
+  },
+  "actions_permissions": {
+    "enabled": true,
+    "allowed_actions": "selected",
+    "selected_actions_url": "https://api.github.com/repositories/1241900677/actions/permissions/selected-actions",
+    "sha_pinning_required": false
+  },
+  "selected_actions": {
+    "github_owned_allowed": true,
+    "patterns_allowed": [
+      "SonarSource/sonarqube-scan-action@*"
+    ],
+    "verified_allowed": false
+  },
+  "external_fork_approval": {
+    "approval_policy": "all_external_contributors"
+  },
+  "security_and_analysis": {
+    "secret_scanning": {
+      "status": "enabled"
+    },
+    "secret_scanning_push_protection": {
+      "status": "enabled"
+    },
+    "dependabot_security_updates": {
+      "status": "enabled"
+    },
+    "secret_scanning_non_provider_patterns": {
+      "status": "disabled"
+    },
+    "secret_scanning_validity_checks": {
+      "status": "disabled"
+    }
+  },
+  "codeql_default_setup": {
+    "state": "configured",
+    "languages": [
+      "actions",
+      "swift"
+    ],
+    "query_suite": "extended",
+    "schedule": "weekly"
+  },
+  "private_vulnerability_reporting": true,
+  "release_environment": {
+    "name": "release",
+    "reviewers": [
+      "austinkennethtucker"
+    ],
+    "prevent_self_review": false,
+    "can_admins_bypass": true,
+    "branches": [
+      {
+        "id": 60094182,
+        "node_id": "MDE2OkdhdGVCcmFuY2hQb2xpY3k2MDA5NDE4Mg==",
+        "name": "main",
+        "type": "branch"
+      }
+    ]
+  },
+  "sonar_environment": {
+    "name": "sonar",
+    "branches": [
+      {
+        "id": 60094236,
+        "node_id": "MDE2OkdhdGVCcmFuY2hQb2xpY3k2MDA5NDIzNg==",
+        "name": "main",
+        "type": "branch"
+      }
+    ],
+    "token_configured": false
+  },
+  "main_ruleset": {
+    "state": "local_disabled_payload_only",
+    "reason": "Await candidate publication and successful exact-revision checks"
+  },
+  "sonar_cloud": {
+    "state": "not_connected",
+    "organization": null,
+    "project_key": null,
+    "analysis_verified": false
+  },
+  "limitations": [
+    "Published HEAD retains legacy workflows; local replacements have not been published or run.",
+    "Full-SHA repository enforcement remains off to avoid breaking the published tag-based workflows.",
+    "Environment settings exist but no release was dispatched and the legacy workflow does not yet bind the release environment."
+  ]
+}

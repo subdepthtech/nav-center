@@ -12,6 +12,10 @@ swift build
 git diff --check
 ```
 
+Use the supported Xcode selection and disposable scratch paths in [testing](docs/TESTING.md). Read [repository guidance](AGENTS.md), [architecture](docs/ARCHITECTURE.md), and [tooling operations](docs/TOOLING.md) for checks, tool pins, and private-data boundaries. Formatting and SwiftLint begin as explicit advisory baselines; native tests and release regressions remain required. Do not bulk-reformat unrelated or inherited work.
+
+Open a ready-for-review PR with the relevant checks, failures, and integration skips. Use Issues for bounded changes with acceptance criteria. Human maintainers decide merges and releases; no bot approval or auto-merge is configured.
+
 ## Development Rules
 
 - Keep the app local-first and privacy-preserving.

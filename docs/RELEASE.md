@@ -43,7 +43,7 @@ Missing values fail before building. The script signs the nested CLI, enclosing 
 
 The manual **Beta Release** workflow requires version and build inputs and uses the `release` environment. Configure that environment's authorized reviewers and secrets before running it. The workflow needs:
 
-- Preinstalled `gitleaks` on its runner. Both current-tree and complete-history scans must pass. A runner without Gitleaks fails closed; the workflow does not install it.
+- The workflow provisions the exact Gitleaks release and SHA-256 in `scripts/tool-versions.json` before scanning. Both current-tree and complete-history scans must pass. Direct local distribution still requires Gitleaks on PATH.
 - `DEVELOPER_ID_CERTIFICATE_BASE64`: base64-encoded Developer ID PKCS12 export.
 - `DEVELOPER_ID_CERTIFICATE_PASSWORD`: its password.
 - The Developer ID identity and three App Store Connect variables listed above as environment secrets.
@@ -51,6 +51,10 @@ The manual **Beta Release** workflow requires version and build inputs and uses 
 The workflow fetches complete history, runs hygiene and regression checks, imports the certificate into a temporary keychain, then builds and verifies the artifact. It also mounts the final DMG read-only and checks the packaged app. Temporary certificate/keychain material is removed even after failure. Checkout credentials are not persisted; the workflow has only `contents: read`, pins action commits, and never creates a GitHub Release or pushes a tap. Upload is conditional on all preceding gates succeeding.
 
 The separate CI workflow runs debug/release builds, XCTest with coverage, address/thread sanitizers, shell syntax, and offline release-script regressions. CI passing alone is not a distribution approval. Current/history secret scans do not replace review for private resume, tracker, screenshot, or workspace data.
+
+The prepared workflow selects macOS 15 and Xcode 26.3, restricts execution to `main`, and retains validated release evidence for 90 days. It records GitHub's dependency-graph SPDX inventory plus [dependency boundaries](DEPENDENCIES.md); this is a source dependency inventory, not an exhaustive binary SBOM. The `release` environment requires a human maintainer's approval. Signing credentials and a real workflow run are still separate setup gates; see [SETUP.md](SETUP.md).
+
+Build-provenance attestation is a follow-on for the first authorized signed candidate. Use GitHub's official artifact-attestation action pinned to a verified commit, scoped `id-token: write` and `attestations: write` on the protected release job, and attest the verified final DMG digest. Verify it after downloading the exact candidate. This setup does not add unused OIDC/write permissions or fabricate an attestation before a signed candidate exists.
 
 ## Homebrew cask
 

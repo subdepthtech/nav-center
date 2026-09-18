@@ -6,8 +6,11 @@ dist/
 output/
 tmp/
 
-# Local agent instructions
-AGENTS.md
+# Shared AGENTS.md is versioned; personal guidance stays local.
+AGENTS.local.md
+.tools/
+reports/
+.scannerwork/
 
 # Local/private workspace data
 workspace/

@@ -1,0 +1,650 @@
+{
+  "recorded_at_utc": "2026-09-16T00:53:28.192392+00:00",
+  "head": "0555cb0483f98de44e6c32a1a1cdd270d50a1abf",
+  "files": 91,
+  "modified_tracked": 38,
+  "untracked_files": 25,
+  "content_manifest_algorithm": "SHA-256 of sorted UTF-8 lines: <file SHA-256> + two spaces + relative path + newline",
+  "content_manifest_sha256": "163ec53653d18d0ccc46b2223b7191db9b2925a2f3981538d91754b9cb2c0c2e",
+  "original_and_worktree_content_identical_at_start": true,
+  "mode_difference": "Worktree checkout normalized inherited tracked modes from 0640/0750 to 0644/0755; executable bits and contents matched. Original modes were not changed.",
+  "baseline_files": [
+    {
+      "path": ".agents/plugins/marketplace.json",
+      "sha256": "d7359be1283150fac41858f5269cfe5fd53c680a568da178c0ec7819d132ce9f",
+      "bytes": 370,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": ".github/workflows/beta-release.yml",
+      "sha256": "c5531dfb7eb95392a2cd42ab4012e24d747cecb72305a3da5d8ba45c582bb946",
+      "bytes": 5364,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "23d340caf65a99fcd2c18ebaa5929258c957d2583612e39efddce907c6396192",
+      "bytes": 1169,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "e71c859f68086e7c8856946a726dd0088c0b89c925854a92168e228fd13ddadb",
+      "bytes": 457,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "CHANGELOG.md",
+      "sha256": "d45f165e15281da31beb43813ed4fb7c609106946a1854450ccfaa7bd40f27fa",
+      "bytes": 196,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "sha256": "636f1b203a7aead0f5a038f279a2895cb8cc4b4267b837cf3f369ed879aa4193",
+      "bytes": 750,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "0a49f6b507cfdff864832d9ce839d2437e08f32526c87e7fb6a42440579888f8",
+      "bytes": 1069,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Package.swift",
+      "sha256": "ffb16652162bf394fe287d4bad1c75af630aede38fcf8f876b6861072a67ce03",
+      "bytes": 1084,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "README.md",
+      "sha256": "f4042e07b554343d5ca5c514a9058212fe5392699231291ebf16511c32b7a493",
+      "bytes": 7191,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Resources/AppIcon.png",
+      "sha256": "650d64945d97eb0ef395745950132b93ddefbf794f46f1d7c96e71eb9e745827",
+      "bytes": 1459820,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "SECURITY.md",
+      "sha256": "4308f3482fce6c8a01813dddf8015430955dcf591480984b838d679fc555a4c5",
+      "bytes": 847,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterApp/App/NavCenterApp.swift",
+      "sha256": "c2a8278e9424092111873beff20c6e8b65ab66d1e8f226b7bfd986ec3182153a",
+      "bytes": 2026,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterApp/Models/DashboardModels.swift",
+      "sha256": "a074462c6ad0727fd57013f4fe2e641b1e0210d190a4fb12dff362a370c2a17e",
+      "bytes": 20545,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterApp/Models/StatusActions.swift",
+      "sha256": "3bfff64ffa1d82b4d5cd2df487366e251b5072494cec32007c76ad8987700799",
+      "bytes": 1021,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterApp/Services/CodexPackageEditBroker.swift",
+      "sha256": "7a82dacb34e5b93b02e9078f9816d9937b9fc207bc3e3de77ac3547c3afcbaa7",
+      "bytes": 13796,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterApp/Services/NativeCodexBridge.swift",
+      "sha256": "0af02d8d1529d6aa8481627feacf8004ab0f2b7191c2dc5ecbbd605ce7f702db",
+      "bytes": 39595,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterApp/Services/NativeDashboardService.swift",
+      "sha256": "591f9acb5a14c4e092101dfabaf1e437e088770d13aececae04856bfd977458f",
+      "bytes": 23075,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterApp/Stores/DashboardStore.swift",
+      "sha256": "78ab12681890bcb851cd4d6c98b2a390be93233495bde1d5df737e198de3febc",
+      "bytes": 28744,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterApp/Views/ApplicationsView.swift",
+      "sha256": "12c7be23a186562a84afde58241223e5254e4109934caa95a6c4b5d1b6f13c87",
+      "bytes": 22454,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterApp/Views/CodexPanelView.swift",
+      "sha256": "3ac1717847c8f916de2be516e890ff8b9688b08db614615b56baeebbf48d518e",
+      "bytes": 16677,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterApp/Views/ContentView.swift",
+      "sha256": "5e31832d640ca8bbbf97b74de765a2f0a0845d8ff3c6146bc0e817077322a03b",
+      "bytes": 28710,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterApp/Views/OverviewView.swift",
+      "sha256": "f1f7643c2f8fd97a3a1fc9a47d22b1981894369e4737c1786242d2e28da65d9b",
+      "bytes": 6396,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterApp/Views/PackageDetailView.swift",
+      "sha256": "8c3fa1f97373ed81181ef771dc990bb0a92f72d8bdf15e18c8e97374904438a2",
+      "bytes": 47275,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterApp/Views/SharedViews.swift",
+      "sha256": "1c46e58c63dd23d6b216daf28caabab81350b30a7af0690b79dba4039b14fdd1",
+      "bytes": 6593,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCLI/main.swift",
+      "sha256": "11bc20701e6c698763a1488b5165631f4fbaec9320632fdb0aede9a0a3d5bd57",
+      "bytes": 8671,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/ApplicationCreator.swift",
+      "sha256": "a3e4ea613dc6508c40f2cc63f86109e5ac8048e44c2fc20c3e646476e7c37548",
+      "bytes": 19336,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/ArtifactExporter.swift",
+      "sha256": "02cf2a55bbf0bc12be72ff2e2faba6e7e327dd02f23dde3425a78cc437e82724",
+      "bytes": 25599,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/DocumentImporter.swift",
+      "sha256": "0b9fb12caf8cdc63a857bd819c8451207196cbccf95388bf315e9395698edb79",
+      "bytes": 8529,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/FeedbackDiagnostics.swift",
+      "sha256": "79df55902a1305811511a63da67944d7ad90f96ec787303bb663280e1d7c4da7",
+      "bytes": 6163,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/InterviewPrep.swift",
+      "sha256": "efd0e93410943f4fa01e0fbfffb2d835227dad5f3f97f46d9aa695bc3ae4650a",
+      "bytes": 10204,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/MasterResumeStore.swift",
+      "sha256": "afe7dd7a00685983c2dc9420912977281726dc397f4d7966c5294e029b94d50f",
+      "bytes": 6762,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/PackageActionRunner.swift",
+      "sha256": "072ee11783da01ee9d50dc52d7c134bb8ecc9fe3cdcde24fac3003139264708f",
+      "bytes": 20479,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/PackageCleanup.swift",
+      "sha256": "6fa8593dc8a7a0787e4c0b3129056ca3d16b237d535ab863b6a70b981ca731a3",
+      "bytes": 29052,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/PackageInspector.swift",
+      "sha256": "5fb00d9741a4eb0b50e32e44f8becc55022838af6fb2500b4a665eeb5aa42aa0",
+      "bytes": 13004,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/PathSafety.swift",
+      "sha256": "cccd13f813e720e9eb7eb0f197de7193223b04ea086e6365b2dd668626bd27aa",
+      "bytes": 15662,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/RealtimeInterview.swift",
+      "sha256": "ae88f88cc96105b8a5d3a6653810008162f293bcc07742d40c559c2484679aa3",
+      "bytes": 14317,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/TrackerCSV.swift",
+      "sha256": "1890acc0e4cda189181e6f4584f73e87efcec30ce4937ad39955fca7276d31aa",
+      "bytes": 3151,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/TrackerStore.swift",
+      "sha256": "9393ed58cc1fc2a2e1529ae6fb13083b91cf7034ee84a775fa004124c71873a2",
+      "bytes": 25239,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/Utilities.swift",
+      "sha256": "778c249104fde9574c109e344bb84d3be46a8a4c34d85782ee0bb31c47713b5b",
+      "bytes": 10603,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/VaultSync.swift",
+      "sha256": "4326a8f07cfaaa693959f24136bec0ff1f7b9fc8e78246e1ab0002d208f426cd",
+      "bytes": 4146,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Sources/NavCenterCore/WorkspaceManager.swift",
+      "sha256": "2d65ce2303f59d7cf48da670698e03899711760f7df21bd6b581659988270e1b",
+      "bytes": 4450,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Tests/NavCenterTests/ATSActionReadinessTests.swift",
+      "sha256": "9c555f12a7da119dc4b0ece39a56edbd785a6517caa2015ae59038a88c6ce758",
+      "bytes": 14352,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Tests/NavCenterTests/BridgeProtocolReadinessTests.swift",
+      "sha256": "5f586c5852ebadc17bc9fae29c161fa4cbe6b73fd81f8db790d230f2ac57321f",
+      "bytes": 12085,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Tests/NavCenterTests/CoreDataIntegrityTests.swift",
+      "sha256": "80ff83b31373784edf42ecca7d816981299a7a0ae51fb962e7bf0687a763d8ea",
+      "bytes": 41796,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Tests/NavCenterTests/CoreSafetyReadinessTests.swift",
+      "sha256": "9ece5723266e59fbf845c61db06f7b9a9ac7022ec9471cf137d02b7a3175186c",
+      "bytes": 8216,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Tests/NavCenterTests/CreatorReadinessTests.swift",
+      "sha256": "3da29ed5f5d04d31376ab937e327d5d7ed81ce08a5865b4efb191f78f30b79ff",
+      "bytes": 4743,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Tests/NavCenterTests/DashboardModelsTests.swift",
+      "sha256": "5faf46de9edbba4e63031c0f526792a9972181167cb9effb38d826a180c7d6bf",
+      "bytes": 11546,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Tests/NavCenterTests/DashboardParityTests.swift",
+      "sha256": "e1b1c0ffdb09a83be23d2921a35fc5b833a293f468b728faa618a5bcc5ee1208",
+      "bytes": 24064,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Tests/NavCenterTests/MasterResumeLayoutTests.swift",
+      "sha256": "c817f46cbbbefa5b1144ea92a0f4e9aa55ede613addd8cd6dcac2dfebe75d358",
+      "bytes": 642,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Tests/NavCenterTests/NativeCodexBridgeSecurityTests.swift",
+      "sha256": "84f3fa9d5cbecb8266757cac2e7db21fde9d9c667a6e1554bbb3299974131a63",
+      "bytes": 12481,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Tests/NavCenterTests/PluginManifestTests.swift",
+      "sha256": "4542d7daeb3f7b850727fcee5d154556217dedd6739e1dc13aa9593ddc419c62",
+      "bytes": 4064,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Tests/NavCenterTests/RemainingCoreReadinessTests.swift",
+      "sha256": "0bc777cb1dc5595375f4b58e542f0cb6cd5a7cac4ff2e60f33512239782c2393",
+      "bytes": 6780,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Tests/NavCenterTests/RendererReadinessTests.swift",
+      "sha256": "d4aa288a17a0f64551863aafde26a9b7bbf37186311450c4a30ae91b0828f65b",
+      "bytes": 8553,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Tests/NavCenterTests/UXReadinessTests.swift",
+      "sha256": "a147020ca7f09074ff64696dc8e7ce8c23f2dff943920385f1170db600afa4c5",
+      "bytes": 24023,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "Tests/NavCenterTests/WorkspaceFeatureTests.swift",
+      "sha256": "9e22ecb6718f7d00f519cc8280cb5d0c16df4602b3e9f4572b67fba592467ede",
+      "bytes": 5264,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "applications/2099-01-01_Example_Corp_Security_Engineer/Resume_2099-01-01_Example_Corp_Security_Engineer.md",
+      "sha256": "3953402c0b742c71084e6a4baacf56d21875a107cc340a762a1d2f44f7a4260f",
+      "bytes": 404,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "applications/2099-01-01_Example_Corp_Security_Engineer/artifacts/ats-report.json",
+      "sha256": "6e34c9e2fe3768d19e213774976b4070aef272ee04c2c8968b589d046da7b54a",
+      "bytes": 189,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "applications/2099-01-01_Example_Corp_Security_Engineer/interview-prep.md",
+      "sha256": "526329e69fdc55bfab4c9f305e147217a83911161851949090fce300a28c0b6d",
+      "bytes": 263,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "applications/2099-01-01_Example_Corp_Security_Engineer/posting.md",
+      "sha256": "cfca86331bf0ed48738bd7b8050b532ebc9078074573e34becc5be157ff29336",
+      "bytes": 704,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "docs/BETA.md",
+      "sha256": "aea850a17047caacca74b790046769ce70e60ddf07dc4911bd91960f15994f1e",
+      "bytes": 2631,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "docs/PUBLIC_RELEASE_CHECKLIST.md",
+      "sha256": "8936808b809c61d98ae454f0a131d5a08ded2084db68a05a39aafa1408549f41",
+      "bytes": 2570,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "docs/RELEASE.md",
+      "sha256": "8d8a8f38ce4c7dc196826009b709a3bcd65d27f9f63c97387dc37fbf5ee5987c",
+      "bytes": 6540,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "docs/automation/nav-center-nightly-job-package-pipeline.md",
+      "sha256": "15694c9a84a391bf1b8945d087aa5614037fc561acb9183cbc06623b457c1b0b",
+      "bytes": 2163,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "master-resumes/master_primary.yaml",
+      "sha256": "728ec4518d5583d55c639d394f7839b22c0587350ba77fc1a467b2ce42caa535",
+      "bytes": 236,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "plan.md",
+      "sha256": "e357c2ec2ce50432f41eab8aa8a804f8428c411f59d3470d2e1ef87297abac68",
+      "bytes": 42755,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "plugins/nav-center/.claude-plugin/plugin.json",
+      "sha256": "a2ccf182c3383a65276ae3832eb0e9068d716cb92c45ac6f453aebcc4d08ca77",
+      "bytes": 437,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "plugins/nav-center/.codex-plugin/plugin.json",
+      "sha256": "c4b257220eccc72efde8c72bd9bafcf399f4592bf15aaea02a1f0f345aedb6b4",
+      "bytes": 1750,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "plugins/nav-center/README.md",
+      "sha256": "38a86867464cca6cbf928b4eab04998da49cbe021eb2a3cfd17b4877b6734456",
+      "bytes": 556,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "plugins/nav-center/skills/nav-center-beta-feedback/SKILL.md",
+      "sha256": "1fb87822877cd69b490932561a9b7ab18d06806a472539bc71e0f79beb7f1ba8",
+      "bytes": 1826,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "plugins/nav-center/skills/nav-center-codex-setup/SKILL.md",
+      "sha256": "aab03de1812833e797fe185eabfb3f90e2bc0e13cc2064fff1ba71e51b9c797a",
+      "bytes": 2754,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "scripts/build-and-run.sh",
+      "sha256": "bd71d45834a08d20f9409191e26d2c2c1065ab971e268aad97aba800829aee7d",
+      "bytes": 5535,
+      "mode": "0o755",
+      "symlink": false
+    },
+    {
+      "path": "scripts/install-codex-skills.sh",
+      "sha256": "2d8a14c712ed06f552bb5ac2c0b4896b4baf96d760394d3a09b747a48b5706b5",
+      "bytes": 601,
+      "mode": "0o755",
+      "symlink": false
+    },
+    {
+      "path": "scripts/notarize-dmg.sh",
+      "sha256": "9e35eeb00b905d2b064cdee24cc8e2439c6f3c2c06808d6325ba11d17bd6b08a",
+      "bytes": 1676,
+      "mode": "0o755",
+      "symlink": false
+    },
+    {
+      "path": "scripts/package-beta-dmg.sh",
+      "sha256": "d34e555dcd9dce07be8884adee1efe29388525555f588b0db840c17a0729be76",
+      "bytes": 4210,
+      "mode": "0o755",
+      "symlink": false
+    },
+    {
+      "path": "scripts/tests/test_cli.py",
+      "sha256": "aeb3f15186935050a574e2e98cf1cc239a75b3c7a45f31948b30d7e0ebdf3305",
+      "bytes": 4357,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "scripts/tests/test_release_scripts.py",
+      "sha256": "e8f127b0cce22c75897e0424ebf660fb8534e82e69ab5d9a5e0f9da8f96f1492",
+      "bytes": 14732,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "scripts/update-homebrew-cask.sh",
+      "sha256": "1ac4247f80d382594a582cd92ca1536189a87d5f4232d081c503bbd25a533b54",
+      "bytes": 1430,
+      "mode": "0o755",
+      "symlink": false
+    },
+    {
+      "path": "tracking/.gitkeep",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "bytes": 1,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "vendor/atsim/.gitignore",
+      "sha256": "86c423a179a7d9907f86b39e802b2d7599a5b87c082ade5ddf8a42ed486157c4",
+      "bytes": 60,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "vendor/atsim/Makefile",
+      "sha256": "dbaab59f33031ab9e9deb7cee574f86f2540895e92d90e4b9239b23707830a51",
+      "bytes": 478,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "vendor/atsim/README.md",
+      "sha256": "89dd1365b614f33e9cd1bf5f4acc2a54e422eb28291aac1bef362c9cd389c32d",
+      "bytes": 1781,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "vendor/atsim/UPSTREAM-SHA256.json",
+      "sha256": "4ff4bf400cb8051bb5f082109b0d34c69d1661553577f8f40007938abf8bfe52",
+      "bytes": 993,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "vendor/atsim/UPSTREAM.md",
+      "sha256": "42e94c757560d8062f840e775df9af317c47369121ad7f9e6a674cd5572484a5",
+      "bytes": 950,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "vendor/atsim/atsim/__init__.py",
+      "sha256": "5c669662aece539532daa5f6caddc946708ac64fde972acff16a3c005e8a022f",
+      "bytes": 82,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "vendor/atsim/atsim/__main__.py",
+      "sha256": "2882369bee916220fba97d632a8ffcefe8347dd65c73152970a67252b34ee058",
+      "bytes": 78,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "vendor/atsim/atsim/cli.py",
+      "sha256": "422998dabe650ccd380b485f86d0a8ebeae0bc3e48a3250b173c8ee0b34d84eb",
+      "bytes": 74013,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "vendor/atsim/atsim/scripts/atsim_opencode_sdk.mjs",
+      "sha256": "f594d5d1414099ad82d36ff17800ab1047645b1c951cb9d1c70c84b37c5f1d6c",
+      "bytes": 7538,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "vendor/atsim/atsim/tests/test_core.py",
+      "sha256": "30bb560e9f98c3b1813dd4898e133fe356c32b9d3a066ef57292949e0dea74bb",
+      "bytes": 41205,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "vendor/atsim/package-lock.json",
+      "sha256": "20c15ca7b5cd0248af314191591af9c9d37d163990345f1c83f5894b6742a963",
+      "bytes": 2828,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "vendor/atsim/package.json",
+      "sha256": "4b43bea749b848f29cd1bb7d1bb02b04a4caa4a23d83b8925d2fac7988ca0595",
+      "bytes": 102,
+      "mode": "0o644",
+      "symlink": false
+    },
+    {
+      "path": "vendor/atsim/pyproject.toml",
+      "sha256": "173c643d7ec16a89469bc5e3b590ac7472375d6748c7407ef109cc69a7a36f59",
+      "bytes": 656,
+      "mode": "0o644",
+      "symlink": false
+    }
+  ]
+}

@@ -60,4 +60,4 @@ Three SwiftPM targets, one test target (`Package.swift`):
 - Env vars: `NAV_CENTER_WORKSPACE_ROOT`, `NAV_CENTER_ATSIM_BIN`, `NAV_CENTER_EXPORT_BIN`, `NAV_CENTER_VAULT_DIR`, `NAV_CENTER_SKIP_VAULT_SYNC`, and the `NAV_CENTER_VERSION` / `NAV_CENTER_BUILD` / `NAV_CENTER_DIST_DIR` / `NAV_CENTER_BUILD_CONFIGURATION` packaging knobs.
 - `plugins/nav-center` is the public Codex/Claude plugin containing only the two `SKILL.md` files; `PluginManifestTests` checks both plugin manifests and `.agents/plugins/marketplace.json`. `scripts/install-codex-skills.sh` installs them into `~/.codex/skills` for local dev.
 - `vendor/atsim` is an unchanged upstream source snapshot for review only; the app still shells out to an external `atsim` binary and does not build or import this directory.
-- `AGENTS.md` is gitignored and reserved for local agent notes.
+- `AGENTS.md` is shared repository guidance; `AGENTS.local.md` is ignored personal guidance.

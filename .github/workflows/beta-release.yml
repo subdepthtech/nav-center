@@ -13,18 +13,37 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: beta-release
+  cancel-in-progress: false
+
 jobs:
   beta-dmg:
     name: Validate signed beta artifact
-    runs-on: macos-14
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15
     environment: release
     timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Provision pinned Gitleaks and verify Xcode
+        run: |
+          printf 'NAV_CENTER_WORKSPACE_ROOT=%s/nav-center-release-synthetic\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          python3 scripts/bootstrap-tools.py --tool gitleaks --directory "$RUNNER_TEMP/nav-center-tools"
+          echo "$RUNNER_TEMP/nav-center-tools" >> "$GITHUB_PATH"
+          xcodebuild -version
+          xcodebuild -checkFirstLaunchStatus
+          swift --version
       - name: Require clean current-tree and history secret scans
         run: |
           set -euo pipefail
@@ -36,12 +55,23 @@ jobs:
           git diff --check
           for script in scripts/*.sh; do bash -n "$script"; done
           python3 -B -m unittest discover -s scripts/tests -v
+          swift build --enable-code-coverage
           swift test --enable-code-coverage
           swift build
           swift build -c release
           NAVCENTERCTL="$(swift build -c release --show-bin-path)/navcenterctl" python3 -B scripts/tests/test_cli.py -v
+          swift build --scratch-path "$RUNNER_TEMP/nav-center-release-asan" --sanitize=address
           swift test --scratch-path "$RUNNER_TEMP/nav-center-release-asan" --sanitize=address
+          swift build --scratch-path "$RUNNER_TEMP/nav-center-release-tsan" --sanitize=thread
           swift test --scratch-path "$RUNNER_TEMP/nav-center-release-tsan" --sanitize=thread
+      - name: Record dependency and license inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          python3 -B scripts/export-sbom.py dist/dependencies.spdx.json
+          python3 -B scripts/verify-vendor.py
+          cp docs/DEPENDENCIES.md dist/DEPENDENCIES.md
       - name: Provision temporary signing keychain
         env:
           DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
@@ -94,15 +124,19 @@ jobs:
           xcrun stapler validate "${images[0]}"
           (cd dist && shasum -a 256 -c ./*.dmg.sha256)
       - name: Upload validated beta artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nav-center-beta-${{ inputs.version }}-${{ inputs.build }}
           if-no-files-found: error
+          retention-days: 90
           path: |
             dist/*.dmg
             dist/*.dmg.sha256
             dist/*.dmg.notary.json
             dist/BUILD.txt
+            dist/dependencies.spdx.json
+            dist/dependencies.spdx.metadata.json
+            dist/DEPENDENCIES.md
             ${{ runner.temp }}/nav-center-current-secrets.json
             ${{ runner.temp }}/nav-center-history-secrets.json
       - name: Remove temporary signing material

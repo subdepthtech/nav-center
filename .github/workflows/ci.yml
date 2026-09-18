@@ -10,30 +10,128 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  swift:
-    name: Build, test and release contracts
-    runs-on: macos-14
-    timeout-minutes: 40
+  repository:
+    name: Repository checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Install checksum-pinned repository tools
+        run: |
+          python3 scripts/bootstrap-tools.py --tool gitleaks --tool actionlint --tool zizmor --directory "$RUNNER_TEMP/nav-center-tools"
+          echo "$RUNNER_TEMP/nav-center-tools" >> "$GITHUB_PATH"
+      - name: Current source and history secret scans
+        run: |
+          gitleaks dir . --redact
+          gitleaks git . --log-opts="--all" --redact
+      - name: Workflow and snapshot checks
+        run: |
+          git diff --check
+          actionlint
+          zizmor --offline --persona auditor .github/workflows
+          python3 -B scripts/verify-vendor.py
+      - name: Snapshot unit tests in synthetic workspace
+        env:
+          ATSIM_JOB_HUNT_ROOT: ${{ github.workspace }}
+          PYTHONPATH: vendor/atsim
+        run: python3 -B -m unittest discover -s vendor/atsim/atsim/tests -v
+
+  swift:
+    name: Build, test and release contracts
+    needs: repository
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Record native toolchain
+        run: |
+          mkdir -p reports/native
+          printf 'NAV_CENTER_WORKSPACE_ROOT=%s/nav-center-synthetic\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          {
+            sw_vers
+            uname -m
+            xcodebuild -version
+            swift --version
+            xcrun llvm-cov --version
+            xcrun swift-format --version
+          } | tee reports/native/toolchain.txt
+          xcodebuild -checkFirstLaunchStatus
+      - name: Install checksum-pinned SwiftLint
+        run: |
+          python3 scripts/bootstrap-tools.py --tool swiftlint --directory "$RUNNER_TEMP/nav-center-tools"
+          echo "$RUNNER_TEMP/nav-center-tools" >> "$GITHUB_PATH"
+      - name: Formatting baseline (advisory)
+        id: format
+        continue-on-error: true # Adoption baseline; never rewrites inherited source.
+        run: xcrun swift-format lint --strict --configuration .swift-format --recursive Sources Tests Package.swift > reports/native/swift-format.txt 2>&1
+      - name: Focused SwiftLint checks
+        id: swiftlint
+        continue-on-error: true # Report inherited findings during baseline calibration.
+        run: swiftlint lint --strict --no-cache --config .swiftlint.yml --reporter json > reports/native/swiftlint.json
       - name: Source and release script checks
         run: |
           git diff --check
           for script in scripts/*.sh; do bash -n "$script"; done
-          python3 -B -m unittest discover -s scripts/tests -v
+          python3 -B -m unittest discover -s scripts/tests -p 'test_release_scripts.py' -v
+          python3 -B -m unittest discover -s scripts/tests -p 'test_tooling.py' -v
       - name: Test with coverage
-        run: swift test --enable-code-coverage
+        run: |
+          swift build --scratch-path "$RUNNER_TEMP/nav-center-swift" --enable-code-coverage
+          swift test --scratch-path "$RUNNER_TEMP/nav-center-swift" --enable-code-coverage 2>&1 | tee reports/native/swift-test.txt
+      - name: Export and validate native analysis reports
+        run: |
+          bash scripts/export-coverage.sh "$RUNNER_TEMP/nav-center-swift" reports/native
+          python3 -B scripts/check-analysis-reports.py reports/native
       - name: Debug and release builds
         run: |
-          swift build
-          swift build -c release
+          swift build --scratch-path "$RUNNER_TEMP/nav-center-swift"
+          swift build --scratch-path "$RUNNER_TEMP/nav-center-swift" -c release
       - name: CLI behavior
-        run: NAVCENTERCTL="$(swift build --show-bin-path)/navcenterctl" python3 -B scripts/tests/test_cli.py -v
+        run: NAVCENTERCTL="$(swift build --scratch-path "$RUNNER_TEMP/nav-center-swift" --show-bin-path)/navcenterctl" python3 -B scripts/tests/test_cli.py -v
       - name: Address sanitizer
-        run: swift test --scratch-path "$RUNNER_TEMP/nav-center-asan" --sanitize=address
+        run: |
+          swift build --scratch-path "$RUNNER_TEMP/nav-center-asan" --sanitize=address
+          swift test --scratch-path "$RUNNER_TEMP/nav-center-asan" --sanitize=address 2>&1 | tee reports/native/asan.txt
       - name: Thread sanitizer
-        run: swift test --scratch-path "$RUNNER_TEMP/nav-center-tsan" --sanitize=thread
+        run: |
+          swift build --scratch-path "$RUNNER_TEMP/nav-center-tsan" --sanitize=thread
+          swift test --scratch-path "$RUNNER_TEMP/nav-center-tsan" --sanitize=thread 2>&1 | tee reports/native/tsan.txt
+      - name: Record integration and formatting scope
+        if: always()
+        env:
+          FORMAT_OUTCOME: ${{ steps.format.outcome }}
+          SWIFTLINT_OUTCOME: ${{ steps.swiftlint.outcome }}
+        run: |
+          {
+            printf 'Formatting baseline outcome: %s\n\n' "$FORMAT_OUTCOME"
+            printf 'SwiftLint baseline outcome: %s\n\n' "$SWIFTLINT_OUTCOME"
+            echo 'Real Chrome and external ATS checks are opt-in and skipped unless explicitly configured.'
+            echo 'The test logs retain actual XCTest skips. Authenticated Codex, UI/VoiceOver, signing, and minimum-OS checks require separate evidence.'
+            echo 'Sonar is optional main-only reporting after successful CI; PRs, forks, and Dependabot do not receive Sonar credentials or analysis.'
+          } | tee reports/native/integration-scope.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload native quality evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-quality
+          path: reports/native/
+          if-no-files-found: warn
+          retention-days: 14

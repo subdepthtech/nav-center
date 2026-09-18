@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /vendor/atsim
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "*" # Snapshot changes require a reviewed upstream update, including security fixes.
+# No third-party SwiftPM dependencies exist yet. Add swift entries when introduced.
+# vendor/atsim is an explicitly reviewed snapshot, not a bot-managed package.

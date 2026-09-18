@@ -1,0 +1,21 @@
+name: Scoped task
+description: Propose a change with a verifiable completion criterion.
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Problem and requested outcome
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and boundaries
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria and validation
+    validations:
+      required: true
