@@ -330,14 +330,22 @@ final class NativeDashboardService: @unchecked Sendable {
 
     private static let trackerReadWarning = "The tracker could not be read. Packages are still available, but status changes and tracked cleanup are disabled until the tracker is accessible and valid."
 
-    private func loadTrackerRows() throws -> TrackerReadState {
+    /// Filesystem-level reachability of the tracker, without reading any row.
+    ///
+    /// Shared by the dashboard read and the write gate so a status change does
+    /// not pay for a full tracker load just to learn whether writing is allowed.
+    private enum TrackerAccess {
+        case missing
+        case inaccessible
+        case present
+    }
+
+    private func trackerFileAccess() throws -> TrackerAccess {
         let directory = trackerDB.deletingLastPathComponent()
         var directoryInfo = stat()
         if lstat(directory.path, &directoryInfo) != 0 {
-            if errno == ENOENT { return TrackerReadState(rows: [], available: false, warnings: []) }
-            if errno == EACCES || errno == EPERM {
-                return TrackerReadState(rows: [], available: false, warnings: [Self.trackerReadWarning])
-            }
+            if errno == ENOENT { return .missing }
+            if errno == EACCES || errno == EPERM { return .inaccessible }
             throw NavCenterError.invalidPath("Could not inspect tracking directory: \(String(cString: strerror(errno)))")
         }
         guard (directoryInfo.st_mode & S_IFMT) != S_IFLNK else {
@@ -348,9 +356,7 @@ final class NativeDashboardService: @unchecked Sendable {
         }
         let directoryDescriptor = open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard directoryDescriptor >= 0 else {
-            if errno == EACCES || errno == EPERM {
-                return TrackerReadState(rows: [], available: false, warnings: [Self.trackerReadWarning])
-            }
+            if errno == EACCES || errno == EPERM { return .inaccessible }
             throw NavCenterError.invalidPath("Could not open tracking directory: \(String(cString: strerror(errno)))")
         }
         var databaseInfo = stat()
@@ -358,11 +364,18 @@ final class NativeDashboardService: @unchecked Sendable {
         let databaseError = errno
         close(directoryDescriptor)
         if databaseStatus != 0 {
-            if databaseError == ENOENT { return TrackerReadState(rows: [], available: false, warnings: []) }
-            if databaseError == EACCES || databaseError == EPERM {
-                return TrackerReadState(rows: [], available: false, warnings: [Self.trackerReadWarning])
-            }
+            if databaseError == ENOENT { return .missing }
+            if databaseError == EACCES || databaseError == EPERM { return .inaccessible }
             throw NavCenterError.invalidPath("Could not inspect tracker database: \(String(cString: strerror(databaseError)))")
+        }
+        return .present
+    }
+
+    private func loadTrackerRows() throws -> TrackerReadState {
+        switch try trackerFileAccess() {
+        case .missing: return TrackerReadState(rows: [], available: false, warnings: [])
+        case .inaccessible: return TrackerReadState(rows: [], available: false, warnings: [Self.trackerReadWarning])
+        case .present: break
         }
         let query = """
         SELECT id, date, company, position, apply_link AS applyLink, status, notes, next_action_date AS nextActionDate, application_dir AS applicationDir, created_at AS createdAt, updated_at AS updatedAt
@@ -392,10 +405,36 @@ final class NativeDashboardService: @unchecked Sendable {
         }, available: true, warnings: [])
     }
 
+    /// Refuse a tracker write the dashboard already knows cannot succeed, using a
+    /// reachability probe rather than a full read: the previous implementation
+    /// loaded, sorted and mapped every row only to inspect a warning list, and the
+    /// write path then opened its own connection and read again.
+    ///
+    /// This stays a friendly-message fast path, not a guarantee. The tracker can
+    /// become unreadable between this probe and the write, so the write path
+    /// remains the authority on whether a change actually lands.
     private func ensureTrackerWriteAllowed(failureMessage: String) throws {
-        let tracker = try loadTrackerRows()
-        guard tracker.warnings.isEmpty else {
-            throw DashboardAPIError.serverUnavailable("\(failureMessage) Packages and drafts have been kept; refresh after the tracker is accessible and valid.")
+        func unavailable() -> DashboardAPIError {
+            DashboardAPIError.serverUnavailable("\(failureMessage) Packages and drafts have been kept; refresh after the tracker is accessible and valid.")
+        }
+        switch try trackerFileAccess() {
+        case .missing:
+            // First-use tracker creation belongs to the write path itself.
+            return
+        case .inaccessible:
+            throw unavailable()
+        case .present:
+            // Confirm the database opens and carries the expected table without
+            // materializing its rows.
+            do {
+                _ = try TrackerStore.queryRows(
+                    repoRoot: repoRoot,
+                    dbPath: trackerDB,
+                    sql: "SELECT 1 FROM applications LIMIT 1;"
+                )
+            } catch {
+                throw unavailable()
+            }
         }
     }
 
