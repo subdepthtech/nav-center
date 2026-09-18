@@ -34,7 +34,7 @@ class CommittedRangeWhitespaceTests(unittest.TestCase):
         expected_ci = collections.Counter({
             'git log --format= --check --diff-merges=remerge "$merge_base..HEAD"': 2,
             'git log --format= --check --diff-merges=remerge "$PUSH_BEFORE_SHA..$tip"': 2,
-            'git log --format= --check --diff-merges=remerge "$tip"': 2,
+            'git log -1 --format= --check --diff-merges=remerge "$tip"': 2,
             "git log -1 --format= --check --diff-merges=remerge HEAD": 2,
         })
         self.assertEqual(collections.Counter(commands(ci)), expected_ci)

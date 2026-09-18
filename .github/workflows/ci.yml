@@ -55,7 +55,10 @@ jobs:
               if [[ -n "${PUSH_BEFORE_SHA:-}" && ! "$PUSH_BEFORE_SHA" =~ ^0+$ ]] && git cat-file -e "$PUSH_BEFORE_SHA^{commit}" 2>/dev/null; then
                 git log --format= --check --diff-merges=remerge "$PUSH_BEFORE_SHA..$tip"
               else
-                git log --format= --check --diff-merges=remerge "$tip"
+                # No reachable before-SHA (first push, or a force-push over an
+                # unfetched commit): check the tip alone rather than walking all
+                # of history through --check.
+                git log -1 --format= --check --diff-merges=remerge "$tip"
               fi
               ;;
             workflow_dispatch)
@@ -131,7 +134,10 @@ jobs:
               if [[ -n "${PUSH_BEFORE_SHA:-}" && ! "$PUSH_BEFORE_SHA" =~ ^0+$ ]] && git cat-file -e "$PUSH_BEFORE_SHA^{commit}" 2>/dev/null; then
                 git log --format= --check --diff-merges=remerge "$PUSH_BEFORE_SHA..$tip"
               else
-                git log --format= --check --diff-merges=remerge "$tip"
+                # No reachable before-SHA (first push, or a force-push over an
+                # unfetched commit): check the tip alone rather than walking all
+                # of history through --check.
+                git log -1 --format= --check --diff-merges=remerge "$tip"
               fi
               ;;
             workflow_dispatch)
