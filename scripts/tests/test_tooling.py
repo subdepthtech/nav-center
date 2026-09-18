@@ -1,11 +1,13 @@
 """Negative checks for report boundaries; all inputs are synthetic."""
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
 import os
 from pathlib import Path
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -13,6 +15,51 @@ from unittest.mock import patch
 SPEC = importlib.util.spec_from_file_location("reports", Path(__file__).resolve().parents[1] / "check-analysis-reports.py")
 REPORTS = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(REPORTS)
+BOOTSTRAP_SPEC = importlib.util.spec_from_file_location(
+    "bootstrap_tools", Path(__file__).resolve().parents[1] / "bootstrap-tools.py"
+)
+BOOTSTRAP = importlib.util.module_from_spec(BOOTSTRAP_SPEC)
+BOOTSTRAP_SPEC.loader.exec_module(BOOTSTRAP)
+
+
+class BootstrapToolsTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="nav-bootstrap-synthetic-")
+        self.addCleanup(self.temp.cleanup)
+        self.destination = Path(self.temp.name)
+        self.binary = b"synthetic executable bytes"
+        archive_data = io.BytesIO()
+        with tarfile.open(fileobj=archive_data, mode="w:gz") as archive:
+            member = tarfile.TarInfo("release/synthetic-tool")
+            member.size = len(self.binary)
+            archive.addfile(member, io.BytesIO(self.binary))
+        self.archive = archive_data.getvalue()
+        self.entry = {
+            "url": "https://github.com/example/releases/download/v1/tool.tar.gz",
+            "sha256": hashlib.sha256(self.archive).hexdigest(),
+        }
+
+    def response(self, data):
+        return io.BytesIO(data)
+
+    def test_stale_download_does_not_block_verified_install(self):
+        stale = self.destination / "synthetic-tool.download"
+        stale.write_bytes(b"interrupted old download")
+        with patch.object(BOOTSTRAP.urllib.request, "urlopen", return_value=self.response(self.archive)):
+            BOOTSTRAP.install("synthetic-tool", self.entry, self.destination)
+        installed = self.destination / "synthetic-tool"
+        self.assertEqual(installed.read_bytes(), self.binary)
+        self.assertEqual(installed.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(stale.read_bytes(), b"interrupted old download")
+        self.assertEqual(list(self.destination.glob(".synthetic-tool.download.*")), [])
+
+    def test_checksum_mismatch_installs_nothing(self):
+        entry = self.entry | {"sha256": "0" * 64}
+        with (patch.object(BOOTSTRAP.urllib.request, "urlopen", return_value=self.response(self.archive)),
+              self.assertRaisesRegex(ValueError, "Checksum mismatch")):
+            BOOTSTRAP.install("synthetic-tool", entry, self.destination)
+        self.assertFalse((self.destination / "synthetic-tool").exists())
+        self.assertEqual(list(self.destination.glob(".synthetic-tool.download.*")), [])
 
 
 class AnalysisReportTests(unittest.TestCase):

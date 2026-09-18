@@ -4,9 +4,11 @@ import argparse
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import platform
 import tarfile
+import tempfile
 import urllib.request
 import zipfile
 
@@ -33,11 +35,17 @@ def install(name, entry, destination):
             if len(matches) != 1:
                 raise ValueError(f"Expected one regular {name} executable")
             binary = archive.extractfile(matches[0]).read()
-    temporary = destination / (name + ".download")
-    with temporary.open("xb") as stream:
-        stream.write(binary)
-    temporary.chmod(0o755)
-    temporary.replace(destination / name)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{name}.download.", dir=destination
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(binary)
+        temporary.chmod(0o755)
+        temporary.replace(destination / name)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def main():

@@ -1,5 +1,8 @@
 """Offline release regressions: all signing/notary/build processes are synthetic stubs."""
+import contextlib
 import hashlib
+import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -10,8 +13,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 REPO = Path(__file__).resolve().parents[2]
+SBOM_SPEC = importlib.util.spec_from_file_location("export_sbom", REPO / "scripts/export-sbom.py")
+SBOM = importlib.util.module_from_spec(SBOM_SPEC)
+SBOM_SPEC.loader.exec_module(SBOM)
 STUB = r'''import json, os, pathlib, stat, sys
 name = pathlib.Path(sys.argv[0]).name
 args = sys.argv[1:]
@@ -39,6 +46,107 @@ if name == "xcrun" and args[:2] == ["notarytool", "submit"]:
 if name == "xcrun" and args[:2] == ["stapler", "staple"]:
     with open(args[2], "ab") as stream: stream.write(b"synthetic ticket")
 '''
+
+
+class SBOMExportTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="nav-center-sbom-tests-")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.output = self.root / "dependencies.spdx.json"
+        self.metadata = self.output.with_suffix(".metadata.json")
+        self.report_url = (
+            "https://api.github.com/repos/subdepthtech/nav-center/"
+            "dependency-graph/sbom/fetch-report/12345678-abcd"
+        )
+        self.generate = (200, json.dumps({"sbom_url": self.report_url}))
+
+    def run_export(self, responses, monotonic):
+        self.api_calls = []
+        response_iterator = iter(responses)
+
+        def fake_run(command, **_kwargs):
+            self.api_calls.append(command[-1])
+            status, body = next(response_iterator)
+            stdout = (
+                f"HTTP/2.0 {status} Synthetic\n"
+                "content-type: application/json\n\n"
+                f"{body}"
+            )
+            return subprocess.CompletedProcess(
+                command, 0 if 200 <= status < 300 else 1,
+                stdout=stdout, stderr="",
+            )
+
+        with (patch.object(SBOM.subprocess, "run", side_effect=fake_run),
+              patch.object(SBOM.time, "monotonic", side_effect=monotonic),
+              patch.object(SBOM.time, "sleep") as sleep,
+              patch.object(sys, "argv", ["export-sbom.py", str(self.output)]),
+              contextlib.redirect_stdout(io.StringIO())):
+            self.sleep = sleep
+            SBOM.main()
+        return self.sleep
+
+    def assert_no_evidence(self):
+        self.assertFalse(self.output.exists())
+        self.assertFalse(self.metadata.exists())
+
+    def report_poll_count(self):
+        return self.api_calls.count(self.report_url)
+
+    def test_202_then_200_writes_spdx_document_and_metadata(self):
+        sbom = {"spdxVersion": "SPDX-2.3", "packages": [{"name": "synthetic"}]}
+        sleep = self.run_export(
+            [self.generate, (202, "{}"), (200, json.dumps(sbom))],
+            [0, 0, 1, 4],
+        )
+        self.assertEqual(len(self.api_calls), 3)
+        self.assertEqual(self.report_poll_count(), 2)
+        sleep.assert_called_once_with(3)
+        self.assertEqual(json.loads(self.output.read_text()), sbom)
+        metadata = json.loads(self.metadata.read_text())
+        self.assertEqual(metadata["packages"], 1)
+        self.assertEqual(metadata["sha256"], hashlib.sha256(self.output.read_bytes()).hexdigest())
+
+    def test_persistently_202_exits_at_deadline_without_evidence(self):
+        with self.assertRaisesRegex(SystemExit, "not ready within 60 seconds"):
+            self.run_export(
+                [self.generate, (202, "{}"), (202, "{}")],
+                [0, 0, 1, 4, 5, 60],
+            )
+        self.assertEqual(len(self.api_calls), 3)
+        self.assertEqual(self.report_poll_count(), 2)
+        self.assertEqual(self.sleep.call_count, 2)
+        self.assert_no_evidence()
+
+    def test_missing_spdx_version_fails_after_one_poll_without_evidence(self):
+        with self.assertRaises(SystemExit) as raised:
+            self.run_export([self.generate, (200, "{}")], [0, 0])
+        self.assertIn("missing spdxVersion", str(raised.exception))
+        self.assertNotIn("not ready", str(raised.exception))
+        self.assertEqual(self.report_poll_count(), 1)
+        self.assert_no_evidence()
+
+    def test_json_array_fails_after_one_poll_without_evidence(self):
+        with self.assertRaisesRegex(SystemExit, "not a JSON object"):
+            self.run_export([self.generate, (200, "[]")], [0, 0])
+        self.assertEqual(self.report_poll_count(), 1)
+        self.assert_no_evidence()
+
+    def test_malformed_json_fails_without_retry_or_evidence(self):
+        with self.assertRaisesRegex(SystemExit, "invalid JSON"):
+            self.run_export([self.generate, (200, "not-json")], [0, 0])
+        self.assertEqual(self.report_poll_count(), 1)
+        self.assert_no_evidence()
+
+    def test_wrong_schema_fails_without_retry_or_evidence(self):
+        wrong_schema = {"spdxVersion": "not-spdx", "packages": []}
+        with self.assertRaisesRegex(SystemExit, "invalid SPDX schema"):
+            self.run_export(
+                [self.generate, (200, json.dumps(wrong_schema))], [0, 0]
+            )
+        self.assertEqual(self.report_poll_count(), 1)
+        self.assert_no_evidence()
 
 
 class ReleaseScriptsTests(unittest.TestCase):
@@ -163,6 +271,44 @@ class ReleaseScriptsTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(Path(str(image) + ".sha256").exists())
 
+    def test_failed_notary_submission_retains_diagnostic_and_retry_succeeds(self):
+        image = self.root / "retry.dmg"
+        image.write_bytes(b"synthetic signed image")
+        report = Path(str(image) + ".notary.json")
+
+        failed = self.run_script(
+            "notarize-dmg.sh", str(image),
+            extra=self.credentials() | {"FAIL_EVENT": "xcrun:notarytool:submit"},
+        )
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertFalse(report.exists())
+        self.assertEqual(list(self.root.glob(".notary.*")), [])
+        diagnostics = list(self.root.glob(f".{image.name}.notary-failure.*"))
+        self.assertEqual(len(diagnostics), 1)
+        self.assertIn(str(diagnostics[0]), failed.stderr)
+
+        self.assert_ok(self.run_script("notarize-dmg.sh", str(image), extra=self.credentials()))
+        self.assertEqual(json.loads(report.read_text())["status"], "Accepted")
+        self.assertTrue(diagnostics[0].exists())
+        self.assertIn("xcrun:stapler:staple", [event["event"] for event in self.events()])
+
+    def test_rejected_notary_retains_submission_json_without_publishing_sidecar(self):
+        image = self.root / "rejected.dmg"
+        image.write_bytes(b"synthetic signed image")
+        result = self.run_script(
+            "notarize-dmg.sh", str(image),
+            extra=self.credentials() | {"NOTARY_STATUS": "Invalid"},
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(Path(str(image) + ".notary.json").exists())
+        self.assertEqual(list(self.root.glob(".notary.*")), [])
+        diagnostics = list(self.root.glob(f".{image.name}.notary-failure.*"))
+        self.assertEqual(len(diagnostics), 1)
+        self.assertEqual(json.loads(diagnostics[0].read_text())["id"], "synthetic-id")
+        self.assertEqual(json.loads(diagnostics[0].read_text())["status"], "Invalid")
+        self.assertIn(str(diagnostics[0]), result.stderr)
+        self.assertNotEqual(diagnostics[0], Path(str(image) + ".notary.json"))
+
     def test_signing_or_architecture_failure_stops_before_notary(self):
         for condition in ({"FAIL_EVENT": "codesign:sign"}, {"RELEASE_LIPO_ARCH": "wrong"}):
             with self.subTest(condition=condition):
@@ -178,6 +324,19 @@ class ReleaseScriptsTests(unittest.TestCase):
         self.assertNotEqual(self.run_script("package-beta-dmg.sh", "--distribution", extra=self.credentials()).returncode, 0)
         self.assertEqual(image.read_bytes(), b"existing artifact")
         self.assertFalse(any(e["tool"] in ("swift", "codesign", "xcrun", "hdiutil") for e in self.events()))
+
+    def test_retained_notary_diagnostic_does_not_block_package_retry(self):
+        self.dist.mkdir()
+        image_name = f"NavCenter-9.8.7-beta.2-macos-{os.uname().machine}.dmg"
+        diagnostic = self.dist / f".{image_name}.notary-failure.previous"
+        diagnostic.write_text('{"id":"previous-failed-submission","status":"Invalid"}\n')
+
+        result = self.run_script("package-beta-dmg.sh", "--distribution", extra=self.credentials())
+
+        self.assert_ok(result)
+        self.assertTrue(diagnostic.exists())
+        self.assertTrue((self.dist / image_name).exists())
+        self.assertTrue(Path(str(self.dist / image_name) + ".notary.json").exists())
 
     def test_failed_hygiene_or_incomplete_source_stops_before_build(self):
         for condition in ({"FAIL_EVENT": "gitleaks:dir"}, {"FAIL_EVENT": "gitleaks:git"}, {"FAIL_EVENT": "git:status"},
@@ -244,6 +403,11 @@ class ReleaseScriptsTests(unittest.TestCase):
         self.assertNotIn("if:", upload)
         self.assertNotIn("continue-on-error", release)
         self.assertIn("if-no-files-found: error", upload)
+        self.assertNotIn("runner.temp", upload)
+        reports = release.split("- name: Upload secret scan reports", 1)[1].split("- name:", 1)[0]
+        self.assertIn("if-no-files-found: error", reports)
+        self.assertIn("${{ runner.temp }}/nav-center-current-secrets.json", reports)
+        self.assertIn("${{ runner.temp }}/nav-center-history-secrets.json", reports)
 
 
 if __name__ == "__main__":
