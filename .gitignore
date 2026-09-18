@@ -28,3 +28,6 @@ applications/*/artifacts/*.txt
 !applications/**/*.md
 !applications/**/artifacts/*.json
 !master-resumes/*.yaml
+
+# Claude Code hook escape hatch, created only for an authorized vendor snapshot update.
+.claude/ALLOW_VENDOR_SNAPSHOT_UPDATE

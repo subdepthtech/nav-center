@@ -74,6 +74,8 @@ The generator rejects malformed values, unsigned asset names, and mismatched ver
 ## Required proof before sharing
 
 ```sh
+# CI checks the committed range; git diff --check only sees uncommitted work.
+git log --format= --check --diff-merges=remerge "$(git merge-base main HEAD)..HEAD"
 git diff --check
 for script in scripts/*.sh; do bash -n "$script"; done
 python3 -B -m unittest discover -s scripts/tests -v

@@ -6,7 +6,7 @@ Use synthetic fixtures and disposable workspaces. Do not point checks at real re
 
 The CI reference is the standard `macos-15` arm64 runner with Xcode 26.3 selected explicitly. [GitHub's runner inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md) includes `/Applications/Xcode_26.3.app`; [Apple's version table](https://developer.apple.com/xcode/system-requirements) maps it to Swift 6.2.3. This is within [SonarCloud's documented Swift support through 6.3](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/languages/swift). The package deployment minimum remains macOS 13; a test on macOS 15 does not validate that minimum.
 
-Use an installed, user-licensed full Xcode. Command Line Tools alone are not a substitute for the SwiftUI macro, XCTest, SourceKit and SDK combination this project needs. Do not accept an Xcode license on someone else's behalf. If the named version is installed elsewhere, use its actual path and record the difference.
+Use an installed, user-licensed full Xcode. Command Line Tools alone are not a substitute for the SwiftUI macro, XCTest, SourceKit and SDK combination this project needs. Accept an installed Xcode license on the user's behalf only with explicit authorization in the current task, as described in `AGENTS.md`; that authorization also applies to delegated agents working on the task. Preserve OS privilege requirements and verify acceptance before retrying native checks. If the named version is installed elsewhere, use its actual path and record the difference.
 
 Run the examples from the repository root in one Bash session:
 
@@ -33,6 +33,8 @@ A source revision alone does not identify uncommitted changes: retain the workin
 ## Standard checks
 
 ```bash
+# CI checks the committed range; git diff --check only sees uncommitted work.
+git log --format= --check --diff-merges=remerge "$(git merge-base main HEAD)..HEAD"
 git diff --check
 for nav_script in scripts/*.sh; do bash -n "$nav_script"; done
 python3 -B -m unittest discover -s scripts/tests -v

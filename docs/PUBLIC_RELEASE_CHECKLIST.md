@@ -8,7 +8,7 @@ Use this before making the repository public or publishing binaries.
 - `swift build`
 - `swift build -c release`
 - Supported address and thread sanitizer runs
-- `git diff --check`
+- `git log --format= --check --diff-merges=remerge <range>` over the committed range, and `git diff --check` for uncommitted work
 - `for script in scripts/*.sh; do bash -n "$script"; done`
 - `python3 -B -m unittest discover -s scripts/tests -v`
 - Secret scan over the current tree

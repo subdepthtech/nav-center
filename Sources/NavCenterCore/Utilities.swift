@@ -115,6 +115,24 @@ public enum ProcessRunner {
                            environment: [String: String] = [:], timeout: TimeInterval,
                            maximumOutputBytes: Int = 32 * 1024 * 1024,
                            isCancelled: () -> Bool = { false }) throws -> ProcessResult {
+        try runImpl(executable, arguments, cwd: cwd, environment: environment, timeout: timeout,
+                    maximumOutputBytes: maximumOutputBytes, isCancelled: isCancelled, signalObserver: nil)
+    }
+
+    static func runObservingSignals(
+        _ executable: String,
+        _ arguments: [String],
+        timeout: TimeInterval,
+        signalObserver: @escaping (pid_t) -> Void
+    ) throws -> ProcessResult {
+        try runImpl(executable, arguments, cwd: nil, environment: [:], timeout: timeout,
+                    maximumOutputBytes: 32 * 1024 * 1024, isCancelled: { false }, signalObserver: signalObserver)
+    }
+
+    private static func runImpl(_ executable: String, _ arguments: [String], cwd: URL?,
+                                environment: [String: String], timeout: TimeInterval,
+                                maximumOutputBytes: Int, isCancelled: () -> Bool,
+                                signalObserver: ((pid_t) -> Void)?) throws -> ProcessResult {
         guard timeout > 0, maximumOutputBytes > 0 else { throw NavCenterError.commandFailed("Invalid process limits.") }
         let program = executable.hasPrefix("/") ? executable : "/usr/bin/env"
         let argv = [program] + (executable.hasPrefix("/") ? arguments : [executable] + arguments)
@@ -157,51 +175,126 @@ public enum ProcessRunner {
         for fd in [outputPipe[0], errorPipe[0]] { _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) }
         var output = Data(), errors = Data()
         var status: Int32 = 0
-        var reaped = false
+        var ownsChild = true
+        var exited = false
         let deadline = Date().addingTimeInterval(timeout)
         var failure: String?
-        defer {
-            if !reaped {
-                kill(-child, SIGKILL)
-                while waitpid(child, &status, 0) < 0 && errno == EINTR {}
-            }
-        }
+        var escalation: Date?
+        var cleanupDeadline: Date?
+        var signalsFinished = false
         var eof = [false, false]
-        while !reaped || !eof.allSatisfy({ $0 }) {
+        while true {
             var bytes = [UInt8](repeating: 0, count: 64 * 1024)
             for (index, fd) in [outputPipe[0], errorPipe[0]].enumerated() where !eof[index] {
-                while true {
+                // Bound each drain pass so continuous output cannot starve cancellation or escalation.
+                for _ in 0..<16 {
                     let count = Darwin.read(fd, &bytes, bytes.count)
                     if count == 0 { eof[index] = true; break }
                     if count < 0 {
                         if errno == EINTR { continue }
-                        if errno != EAGAIN { failure = "Could not read process output." }
+                        if errno != EAGAIN {
+                            failure = failure ?? "Could not read process output."
+                            eof[index] = true
+                        }
                         break
                     }
-                    if output.count + errors.count + count > maximumOutputBytes { failure = "Process output exceeded its limit."; break }
-                    if index == 0 { output.append(contentsOf: bytes.prefix(count)) }
-                    else { errors.append(contentsOf: bytes.prefix(count)) }
+                    if output.count + errors.count + count > maximumOutputBytes {
+                        failure = failure ?? "Process output exceeded its limit."
+                    } else if failure == nil {
+                        if index == 0 { output.append(contentsOf: bytes.prefix(count)) }
+                        else { errors.append(contentsOf: bytes.prefix(count)) }
+                    }
                 }
             }
-            if !reaped {
+            if ownsChild && !exited {
+                // WNOWAIT reserves the PID/PGID even when the leader has become a zombie.
+                var info = siginfo_t()
+                let result = waitid(P_PID, id_t(child), &info, WEXITED | WNOHANG | WNOWAIT)
+                if result == 0 { exited = info.si_pid == child }
+                else if errno != EINTR {
+                    failure = failure ?? "Could not collect process status."
+                    if errno == ECHILD { ownsChild = false }
+                }
+            }
+            if cleanupDeadline == nil {
+                // This must also run after exit: the PDF renderer cooperatively cancels on its trailer.
+                if isCancelled() { failure = "Process cancelled." }
+                if Date() >= deadline { failure = "Process timed out." }
+                if failure != nil || (exited && eof.allSatisfy({ $0 })) {
+                    // No reaping is permitted until the last group signal has been sent.
+                    // Darwin excludes zombies from group signals; no successful TERM means no grace.
+                    if ownsChild {
+                        signalObserver?(child)
+                        if kill(-child, SIGTERM) == 0 {
+                            escalation = Date().addingTimeInterval(0.05)
+                        } else {
+                            signalsFinished = true
+                        }
+                    } else {
+                        signalsFinished = true
+                    }
+                    cleanupDeadline = Date().addingTimeInterval(1.05)
+                }
+            }
+            if let escalationTime = escalation {
+                if !ownsChild || kill(-child, 0) != 0 {
+                    // TERM may already have stopped every live member; no remaining grace is needed.
+                    signalsFinished = true
+                    escalation = nil
+                } else if Date() >= escalationTime {
+                    kill(-child, SIGKILL)
+                    signalsFinished = true
+                    escalation = nil
+                }
+            }
+            if signalsFinished && ownsChild {
                 let result = waitpid(child, &status, WNOHANG)
-                if result == child { reaped = true }
-                else if result < 0 && errno != EINTR { failure = "Could not collect process status." }
+                if result == child { ownsChild = false }
+                else if result < 0 && errno != EINTR {
+                    failure = failure ?? "Could not collect process status."
+                    if errno == ECHILD { ownsChild = false }
+                }
             }
-            if isCancelled() { failure = "Process cancelled." }
-            if Date() >= deadline { failure = "Process timed out." }
-            if let failure {
-                // The child starts in its own process group; never signal unrelated applications.
-                kill(-child, SIGTERM)
-                Thread.sleep(forTimeInterval: 0.05)
-                kill(-child, SIGKILL)
-                if !reaped { while waitpid(child, &status, 0) < 0 && errno == EINTR {}; reaped = true }
-                throw NavCenterError.commandFailed(failure)
+            if signalsFinished && !ownsChild && eof.allSatisfy({ $0 }) { break }
+            if let cleanupDeadline, Date() >= cleanupDeadline {
+                // A kernel-delayed exit or an escaped pipe holder must not make run() unbounded.
+                // Transfer only reaping, never signalling, to the exit notification.
+                transferReapingAfterCleanupDeadline(child, ownsChild: ownsChild)
+                failure = failure ?? "Process timed out."
+                break
             }
-            if !reaped || !eof.allSatisfy({ $0 }) { Thread.sleep(forTimeInterval: 0.01) }
+            Thread.sleep(forTimeInterval: 0.01)
         }
+        if let failure { throw NavCenterError.commandFailed(failure) }
         let exitStatus: Int32 = (status & 0x7f) == 0 ? (status >> 8) & 0xff : 128 + (status & 0x7f)
         return ProcessResult(status: exitStatus, stdout: String(decoding: output, as: UTF8.self), stderr: String(decoding: errors, as: UTF8.self))
+    }
+
+    /// Makes the cleanup-deadline ownership handoff explicit and directly
+    /// testable without requiring a child stuck in an uninterruptible kernel wait.
+    @discardableResult
+    static func transferReapingAfterCleanupDeadline(
+        _ child: pid_t,
+        ownsChild: Bool,
+        reaper: (pid_t) -> Void = { reapAfterExit($0) }
+    ) -> Bool {
+        guard ownsChild else { return false }
+        reaper(child)
+        return true
+    }
+
+    private static func reapAfterExit(_ child: pid_t) {
+        let source = DispatchSource.makeProcessSource(identifier: child, eventMask: .exit, queue: .global(qos: .utility))
+        source.setEventHandler {
+            var status: Int32 = 0
+            let result = waitpid(child, &status, WNOHANG)
+            if result == 0 || (result < 0 && errno == EINTR) {
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.01) { reapAfterExit(child) }
+            }
+            source.setEventHandler(handler: nil)
+            source.cancel()
+        }
+        source.resume()
     }
 
     private static func spawnError() -> NavCenterError {

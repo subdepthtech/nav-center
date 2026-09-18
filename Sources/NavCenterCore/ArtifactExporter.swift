@@ -254,7 +254,10 @@ enum InertDocumentRenderer {
             throw unsupported("CSS escapes, comments, markup or control characters")
         }
         let rules = try NSRegularExpression(pattern: #"@\s*([\p{L}_-]+)"#)
-        let functions = try NSRegularExpression(pattern: #"([\p{L}_-][\p{L}\p{N}_-]*)\s*\("#)
+        let functions = try NSRegularExpression(pattern: #"([\p{L}_-][\p{L}\p{N}_-]*)\("#)
+        let spacedFunctions = try NSRegularExpression(pattern: #"([\p{L}_-][\p{L}\p{N}_-]*)\s+\("#)
+        let allowedPrelude = try NSRegularExpression(pattern: #"^\s*@\s*(?:page|media)(?=\s|:|\()"#, options: .caseInsensitive)
+        let declaration = try NSRegularExpression(pattern: #"^\s*(?:[A-Za-z_-]|[^\x00-\x7F])(?:[A-Za-z0-9_-]|[^\x00-\x7F])*\s*:"#)
         let range = NSRange(css.startIndex..<css.endIndex, in: css)
         for match in rules.matches(in: css, range: range) {
             let name = (css as NSString).substring(with: match.range(at: 1)).lowercased()
@@ -265,6 +268,49 @@ enum InertDocumentRenderer {
             let name = (css as NSString).substring(with: match.range(at: 1)).lowercased()
             guard allowedFunctions.contains(name) else { throw unsupported("CSS function \(name.prefix(32))()") }
         }
+        // Function tokens require an immediately adjacent '('. Still reject
+        // legacy whitespace-tolerant spellings outside allowed at-rule preludes,
+        // including bare declaration lists supplied by inline style attributes.
+        func validateStatement(_ statement: Substring, opensBlock: Bool) throws {
+            let text = String(statement)
+            let statementRange = NSRange(text.startIndex..<text.endIndex, in: text)
+            if opensBlock, allowedPrelude.firstMatch(in: text, range: statementRange) != nil { return }
+            for match in spacedFunctions.matches(in: text, range: statementRange) {
+                let name = (text as NSString).substring(with: match.range(at: 1)).lowercased()
+                guard allowedFunctions.contains(name) else { throw unsupported("CSS function \(name.prefix(32))()") }
+            }
+        }
+        // Only real statement boundaries can introduce a prelude. Quotes and
+        // component blocks must not let declaration values manufacture one.
+        var start = css.startIndex
+        var quote: Unicode.Scalar?
+        var closers: [Unicode.Scalar] = []
+        for index in css.unicodeScalars.indices {
+            let character = css.unicodeScalars[index]
+            if let currentQuote = quote {
+                if character == currentQuote || character == "\n" || character == "\r" { quote = nil }
+                continue
+            }
+            if character == "\"" || character == "'" { quote = character; continue }
+            if character == "(" { closers.append(")"); continue }
+            if character == "[" { closers.append("]"); continue }
+            if character == "{" {
+                if !closers.isEmpty { closers.append("}"); continue }
+                let statement = String(css[start..<index])
+                let statementRange = NSRange(statement.startIndex..<statement.endIndex, in: statement)
+                // Keep curly component blocks in declaration values together.
+                // Ambiguous pseudo-selectors are conservatively checked as a unit.
+                if declaration.firstMatch(in: statement, range: statementRange) != nil {
+                    closers.append("}")
+                    continue
+                }
+            }
+            if character == closers.last { closers.removeLast(); continue }
+            guard closers.isEmpty, character == "{" || character == "}" || character == ";" else { continue }
+            try validateStatement(css[start..<index], opensBlock: character == "{")
+            start = css.unicodeScalars.index(after: index)
+        }
+        try validateStatement(css[start...], opensBlock: false)
     }
 
     static func render(document: String, pdfURL: URL, staging: URL, chromePath: String) throws {

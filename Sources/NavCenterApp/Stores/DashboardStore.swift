@@ -32,6 +32,11 @@ protocol DashboardServicing: AnyObject, Sendable {
     func cancelCodexTurn() throws
 }
 
+enum MasterResumeSaveOutcome: Equatable {
+    case saved
+    case notSaved(String)
+}
+
 extension DashboardServicing {
     func cancelCodexTurn() throws { throw DashboardAPIError.serverUnavailable("This service does not support cancellation.") }
     func fetchActions(packageName: String) -> ActionLogResponse {
@@ -290,8 +295,16 @@ final class DashboardStore: ObservableObject {
     }
 
     func applyPackageCleanup(olderThanDays: Int = 7, deleteTracked: Bool = true, confirmedPreview: PackageCleanupPreview? = nil) async {
-        guard let preview = confirmedPreview ?? cleanupPreview, preview.olderThanDays == olderThanDays, !isRunningCleanup else {
+        guard !isRunningCleanup else {
+            cleanupMessage = "Package cleanup is already running."
+            return
+        }
+        guard let preview = confirmedPreview ?? cleanupPreview else {
             errorMessage = "Preview the packages before confirming cleanup."
+            return
+        }
+        guard preview.olderThanDays == olderThanDays else {
+            errorMessage = "The cleanup preview is stale because its age threshold no longer matches. Preview the packages again before confirming cleanup."
             return
         }
         isRunningCleanup = true
@@ -301,9 +314,18 @@ final class DashboardStore: ObservableObject {
             let removedNames = Set(result.removedPackages.map(\.packageName))
             if let selectedName = selectedPackage?.package.name, removedNames.contains(selectedName) { closePackage() }
             cleanupMessage = (["Removed \(result.removedPackages.count) package\(result.removedPackages.count == 1 ? "" : "s"). Backup: \(result.backupURL.lastPathComponent)"] + result.warnings).joined(separator: " ")
-            do { _ = try await background { try $0.previewPackageCleanup(olderThanDays: olderThanDays) } }
-            catch { cleanupMessage = (cleanupMessage ?? "Cleanup completed.") + " The remaining packages could not be checked. Refresh to try again." }
-            cleanupPreview = nil
+            do {
+                let refreshedPreview = try await background { try $0.previewPackageCleanup(olderThanDays: olderThanDays) }
+                if refreshedPreview.candidates.isEmpty {
+                    cleanupPreview = nil
+                    cleanupMessage = (cleanupMessage ?? "Cleanup completed.") + " No additional packages match this cleanup preview."
+                } else {
+                    cleanupPreview = refreshedPreview
+                }
+            } catch {
+                cleanupPreview = nil
+                cleanupMessage = (cleanupMessage ?? "Cleanup completed.") + " Cleanup succeeded, but the next preview could not be refreshed. Preview again before another cleanup."
+            }
             try await refreshAll()
         } catch { cleanupPreview = nil; errorMessage = error.localizedDescription }
     }
@@ -359,11 +381,17 @@ final class DashboardStore: ObservableObject {
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func saveMasterResume() async {
-        guard !isSavingMasterResume, !isLoadingMasterResume else { return }
+    @discardableResult
+    func saveMasterResume() async -> MasterResumeSaveOutcome {
+        guard !isSavingMasterResume, !isLoadingMasterResume else {
+            let message = "Wait for the current master resume operation to finish, then save again. Your draft has been kept."
+            errorMessage = message
+            return .notSaved(message)
+        }
         guard let expectedContent = masterResumeSnapshot?.content else {
-            errorMessage = "Load the saved master resume before saving changes. Your draft has been kept."
-            return
+            let message = "Load and review the saved master resume before saving changes. Your draft has been kept."
+            errorMessage = message
+            return .notSaved(message)
         }
         isSavingMasterResume = true
         defer { isSavingMasterResume = false }
@@ -376,9 +404,17 @@ final class DashboardStore: ObservableObject {
                 content: content,
                 modifiedAt: result.modifiedAt
             )
-            masterResumeMessage = "Saved \(result.relativePath)"
+            if masterResumeContent == content {
+                masterResumeMessage = "Saved \(result.relativePath)"
+                return .saved
+            }
+            let message = "The earlier draft was saved, but newer edits remain unsaved. Save again before quitting."
+            masterResumeMessage = message
+            return .notSaved(message)
         } catch {
-            errorMessage = error.localizedDescription
+            let message = "The master resume could not be saved. Your draft has been kept. \(error.localizedDescription)"
+            errorMessage = message
+            return .notSaved(message)
         }
     }
 

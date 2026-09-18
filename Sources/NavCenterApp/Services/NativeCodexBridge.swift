@@ -824,6 +824,8 @@ private final class CodexOwnedProcess: @unchecked Sendable {
     var terminationHandler: ((CodexOwnedProcess) -> Void)?
     private let stateLock = NSLock()
     private let completion = DispatchGroup()
+    private var exitSource: DispatchSourceProcess?
+    private var canSignal = false
     private var running = false
     private var pid: pid_t = 0
     var isRunning: Bool { stateLock.lock(); defer { stateLock.unlock() }; return running }
@@ -868,21 +870,53 @@ private final class CodexOwnedProcess: @unchecked Sendable {
         try? input.fileHandleForReading.close()
         try? output.fileHandleForWriting.close()
         try? errors.fileHandleForWriting.close()
-        stateLock.lock(); pid = child; running = true; stateLock.unlock()
+        stateLock.lock(); pid = child; running = true; canSignal = true; stateLock.unlock()
         let ownedPID = child
         completion.enter()
-        DispatchQueue.global(qos: .utility).async { [self] in
-            var status: Int32 = 0
-            while waitpid(ownedPID, &status, 0) < 0 && errno == EINTR {}
-            // A child can outlive its leader while holding staging files or output pipes.
-            kill(-ownedPID, SIGKILL)
-            stateLock.lock(); running = false; stateLock.unlock()
-            terminationHandler?(self)
-            completion.leave()
-        }
+        let source = DispatchSource.makeProcessSource(identifier: ownedPID, eventMask: .exit, queue: .global(qos: .utility))
+        exitSource = source
+        source.setEventHandler { [self] in collectExit(ownedPID) }
+        source.resume()
     }
 
-    func terminate() { let value = processIdentifier; if value > 0 { kill(-value, SIGTERM) } }
-    func forceKill() { let value = processIdentifier; if value > 0 { kill(-value, SIGKILL) } }
+    private func collectExit(_ ownedPID: pid_t) {
+        stateLock.lock()
+        guard running else { stateLock.unlock(); return }
+        var info = siginfo_t()
+        let observed = waitid(P_PID, id_t(ownedPID), &info, WEXITED | WNOHANG | WNOWAIT)
+        if (observed == 0 && info.si_pid == 0) || (observed < 0 && errno == EINTR) {
+            stateLock.unlock()
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.01) { [self] in collectExit(ownedPID) }
+            return
+        }
+        // The unreaped leader reserves the PGID. Hold the same lock used by public signals
+        // through descendant cleanup, ownership closure and the nonblocking reap.
+        if observed == 0 && info.si_pid == ownedPID && canSignal { kill(-ownedPID, SIGKILL) }
+        canSignal = false
+        var status: Int32 = 0
+        let collected = waitpid(ownedPID, &status, WNOHANG)
+        if collected == 0 || (collected < 0 && errno == EINTR) {
+            stateLock.unlock()
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.01) { [self] in collectExit(ownedPID) }
+            return
+        }
+        running = false
+        exitSource?.cancel()
+        exitSource = nil
+        stateLock.unlock()
+        defer { completion.leave() }
+        terminationHandler?(self)
+    }
+
+    func terminate() {
+        stateLock.lock(); defer { stateLock.unlock() }
+        if canSignal { kill(-pid, SIGTERM) }
+    }
+
+    func forceKill() {
+        stateLock.lock(); defer { stateLock.unlock() }
+        if canSignal { kill(-pid, SIGKILL) }
+    }
+
     func waitUntilExit() { completion.wait() }
 }

@@ -85,6 +85,210 @@ final class CoreSafetyReadinessTests: XCTestCase {
         XCTAssertTrue(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || result.stdout.contains("Z"))
     }
 
+    private func processScript(_ body: String, in root: URL) throws -> URL {
+        let script = root.appendingPathComponent("process.sh")
+        try Data(("#!/bin/sh\n" + body).utf8).write(to: script)
+        return script
+    }
+
+    // Observe a zombie without consuming it. This asserts the runner still owns the PID
+    // when it evaluates cancellation/limits, including the iteration that observes exit.
+    private func exitedProcess(in pidFile: URL, timeout: TimeInterval = 2) -> pid_t? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let text = try? String(contentsOf: pidFile),
+               let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                var info = siginfo_t()
+                let result = waitid(P_PID, id_t(pid), &info, WEXITED | WNOHANG | WNOWAIT)
+                if result == 0 && info.si_pid == pid { return pid }
+                if result < 0 && errno != EINTR {
+                    XCTFail("Leader was reaped before the final cancellation/signalling decision: \(errno)")
+                    return nil
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        XCTFail("Synthetic leader did not exit within the fixture deadline")
+        return nil
+    }
+
+    private func assertProcessGone(_ pid: pid_t, file: StaticString = #filePath, line: UInt = #line) {
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline {
+            if kill(pid, 0) == -1 && errno == ESRCH { return }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        XCTFail("Synthetic process \(pid) survived cleanup", file: file, line: line)
+    }
+
+    func testExitedProcessOutputLimitRetainsOwnershipUntilCleanup() throws {
+        let root = try fixture()
+        let pidFile = root.appendingPathComponent("leader.pid")
+        let script = try processScript("""
+        echo $$ > "$1"
+        printf '%s' 'synthetic output exceeding the small capture limit'
+        exit 0
+        """, in: root)
+        var observedPID: pid_t?
+        let started = Date()
+        XCTAssertThrowsError(try ProcessRunner.run("/bin/sh", [script.path, pidFile.path], timeout: 4,
+                                                   maximumOutputBytes: 8, isCancelled: {
+            observedPID = self.exitedProcess(in: pidFile)
+            return false
+        })) { error in
+            XCTAssertEqual(error as? NavCenterError, .commandFailed("Process output exceeded its limit."))
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3)
+        let pid = try XCTUnwrap(observedPID)
+        var status: Int32 = 0
+        XCTAssertEqual(waitpid(pid, &status, WNOHANG), -1)
+        XCTAssertEqual(errno, ECHILD)
+        assertProcessGone(pid)
+    }
+
+    func testExitedLeaderIsObservedThenSignalledBeforeItIsReaped() throws {
+        var observedPID: pid_t?
+        let result = try ProcessRunner.runObservingSignals("/bin/sh", ["-c", "exit 0"], timeout: 2) { pid in
+            var info = siginfo_t()
+            XCTAssertEqual(waitid(P_PID, id_t(pid), &info, WEXITED | WNOHANG | WNOWAIT), 0)
+            XCTAssertEqual(info.si_pid, pid, "The leader must remain owned through the final group-signal decision")
+            observedPID = pid
+        }
+
+        XCTAssertEqual(result.status, 0)
+        let pid = try XCTUnwrap(observedPID)
+        var status: Int32 = 0
+        XCTAssertEqual(waitpid(pid, &status, WNOHANG), -1)
+        XCTAssertEqual(errno, ECHILD)
+    }
+
+    func testCleanupDeadlineTransfersOnlyOwnedChildToDeferredReaper() throws {
+        var transferred: [pid_t] = []
+        XCTAssertFalse(ProcessRunner.transferReapingAfterCleanupDeadline(41, ownsChild: false) { transferred.append($0) })
+        XCTAssertTrue(transferred.isEmpty)
+        XCTAssertTrue(ProcessRunner.transferReapingAfterCleanupDeadline(42, ownsChild: true) { transferred.append($0) })
+        XCTAssertEqual(transferred, [42])
+
+        var child: pid_t = 0
+        let arguments = [strdup("/bin/sleep"), strdup("0.1"), nil]
+        let environment: [UnsafeMutablePointer<CChar>?] = [nil]
+        defer { arguments.compactMap { $0 }.forEach { free($0) } }
+        let spawnStatus = arguments.withUnsafeBufferPointer { argv in
+            environment.withUnsafeBufferPointer { envp in
+                posix_spawn(&child, "/bin/sleep", nil, nil, argv.baseAddress!, envp.baseAddress!)
+            }
+        }
+        guard spawnStatus == 0 else { return XCTFail("Could not spawn deferred-reaper fixture: \(spawnStatus)") }
+        var wasReaped = false
+        defer {
+            if !wasReaped {
+                _ = kill(child, SIGKILL)
+                var status: Int32 = 0
+                while waitpid(child, &status, 0) < 0 && errno == EINTR {}
+            }
+        }
+
+        XCTAssertTrue(ProcessRunner.transferReapingAfterCleanupDeadline(child, ownsChild: true))
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline {
+            var info = siginfo_t()
+            let result = waitid(P_PID, id_t(child), &info, WEXITED | WNOHANG | WNOWAIT)
+            if result < 0 && errno == ECHILD {
+                wasReaped = true
+                break
+            }
+            XCTAssertTrue(result == 0 || errno == EINTR)
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        XCTAssertTrue(wasReaped, "Deferred cleanup did not reap the transferred child")
+    }
+
+    func testCancellationAfterLeaderExitPreservesRendererError() throws {
+        let root = try fixture()
+        let pidFile = root.appendingPathComponent("leader.pid")
+        let script = try processScript("echo $$ > \"$1\"\nexit 0\n", in: root)
+        var observedPID: pid_t?
+        XCTAssertThrowsError(try ProcessRunner.run("/bin/sh", [script.path, pidFile.path], timeout: 4, isCancelled: {
+            observedPID = self.exitedProcess(in: pidFile)
+            return true
+        })) { error in
+            XCTAssertEqual(error as? NavCenterError, .commandFailed("Process cancelled."))
+        }
+        assertProcessGone(try XCTUnwrap(observedPID))
+    }
+
+    func testExitedLeaderDescendantIsGoneAfterTimeoutAndCancellation() throws {
+        for cancel in [false, true] {
+            let root = try fixture()
+            let leaderFile = root.appendingPathComponent("leader.pid")
+            let descendantFile = root.appendingPathComponent("descendant.pid")
+            let script = try processScript("""
+            if [ "$1" = worker ]; then
+                trap '' TERM
+                echo $$ > "$2"
+                exec /bin/sleep 30
+            fi
+            echo $$ > "$2"
+            /bin/sh "$0" worker "$1" &
+            while [ ! -s "$1" ]; do /bin/sleep 0.01; done
+            exit 0
+            """, in: root)
+            var observedPID: pid_t?
+            let started = Date()
+            XCTAssertThrowsError(try ProcessRunner.run("/bin/sh", [script.path, descendantFile.path, leaderFile.path],
+                                                       timeout: cancel ? 4 : 0.5, isCancelled: {
+                observedPID = self.exitedProcess(in: leaderFile)
+                return cancel
+            })) { error in
+                XCTAssertEqual(error as? NavCenterError, .commandFailed(cancel ? "Process cancelled." : "Process timed out."))
+            }
+            XCTAssertLessThan(Date().timeIntervalSince(started), 3)
+            XCTAssertNotNil(observedPID)
+            let descendant = try XCTUnwrap(pid_t(String(contentsOf: descendantFile).trimmingCharacters(in: .whitespacesAndNewlines)))
+            assertProcessGone(descendant)
+        }
+    }
+
+    func testShellSuccessFullyDrainsBothStreamsAndDecodesExitStatus() throws {
+        let root = try fixture()
+        let script = try processScript("""
+        i=0
+        while [ "$i" -lt 4096 ]; do
+            printf 'stdout café\\n'
+            printf 'stderr résumé\\n' >&2
+            i=$((i + 1))
+        done
+        exit "$1"
+        """, in: root)
+        for status in [0, 23] {
+            let result = try ProcessRunner.run("/bin/sh", [script.path, String(status)], timeout: 5)
+            XCTAssertEqual(result.status, Int32(status))
+            XCTAssertEqual(result.stdout, String(repeating: "stdout café\n", count: 4096))
+            XCTAssertEqual(result.stderr, String(repeating: "stderr résumé\n", count: 4096))
+        }
+        let signalled = try processScript("kill -KILL $$\n", in: root)
+        XCTAssertEqual(try ProcessRunner.run("/bin/sh", [signalled.path], timeout: 2).status, 128 + SIGKILL)
+    }
+
+    func testTimeoutEscalatesWhenShellIgnoresSIGTERM() throws {
+        let root = try fixture()
+        let pidFile = root.appendingPathComponent("leader.pid")
+        let script = try processScript("""
+        trap '' TERM
+        echo $$ > "$1"
+        exec /bin/sleep 30
+        """, in: root)
+        let started = Date()
+        XCTAssertThrowsError(try ProcessRunner.run("/bin/sh", [script.path, pidFile.path], timeout: 0.25)) { error in
+            XCTAssertEqual(error as? NavCenterError, .commandFailed("Process timed out."))
+        }
+        let elapsed = Date().timeIntervalSince(started)
+        XCTAssertGreaterThanOrEqual(elapsed, 0.30)
+        XCTAssertLessThan(elapsed, 2)
+        let pid = try XCTUnwrap(pid_t(String(contentsOf: pidFile).trimmingCharacters(in: .whitespacesAndNewlines)))
+        assertProcessGone(pid)
+    }
+
     func testFrontmatterEscapesAndCRLFRoundTrip() throws {
         let original = "ACME\\new \"café\"\nline\tend\r"
         let document = "---\r\ncompany: \(Markdown.yamlString(original))\r\n---\r\nBody"

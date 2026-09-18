@@ -42,8 +42,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch alert.runModal() {
         case .alertFirstButtonReturn:
             Task {
-                await store.saveMasterResume()
-                sender.reply(toApplicationShouldTerminate: !store.hasUnsavedMasterResume)
+                let outcome = await store.saveMasterResume()
+                sender.reply(toApplicationShouldTerminate: outcome == .saved)
             }
             return .terminateLater
         case .alertThirdButtonReturn:

@@ -175,6 +175,40 @@ final class CoreDataIntegrityTests: XCTestCase {
         XCTAssertFalse(SQLiteSupport.exists(database))
     }
 
+    func testRestoreResultSeparatesMovedPackagesFromAlreadyPresentPackages() throws {
+        let applied = try cleanup()
+        XCTAssertEqual(applied.removedPackages.map(\.packageName), [packageName])
+        XCTAssertTrue(applied.restoredPackages.isEmpty)
+
+        let cleaner = PackageCleanup(repoRoot: root)
+        cleaner.beforeManifestWrite = { state, _ in
+            if state == "restored" { throw NavCenterError.commandFailed("fixture restore manifest failure") }
+        }
+        let firstRestore = try cleaner.restore(manifestURL: applied.manifestURL, confirmed: true)
+        XCTAssertTrue(firstRestore.removedPackages.isEmpty)
+        XCTAssertEqual(firstRestore.restoredPackages.map(\.packageName), [packageName])
+
+        let retry = try PackageCleanup(repoRoot: root).restore(manifestURL: applied.manifestURL, confirmed: true)
+        XCTAssertTrue(retry.removedPackages.isEmpty)
+        XCTAssertTrue(retry.restoredPackages.isEmpty)
+    }
+
+    func testRestoreResultReportsTrackerRowsRestoredAfterPackagesWereAlreadyMoved() throws {
+        _ = try status()
+        let applied = try cleanup()
+        let retained = applied.manifestURL.deletingLastPathComponent()
+            .appendingPathComponent("packages/" + packageName, isDirectory: true)
+        try PathSafety.moveItem(retained, to: package, inside: root, label: "synthetic interrupted restore")
+
+        let restored = try PackageCleanup(repoRoot: root).restore(manifestURL: applied.manifestURL, confirmed: true)
+
+        XCTAssertTrue(restored.removedPackages.isEmpty)
+        XCTAssertTrue(restored.restoredPackages.isEmpty)
+        XCTAssertEqual(restored.restoredTrackerRows, 2)
+        XCTAssertEqual(try TrackerStore(repoRoot: root).loadRows().map(\.applicationDir), ["applications/" + packageName])
+        XCTAssertEqual(try TrackerStore.queryRows(repoRoot: root, dbPath: database, sql: "select * from status_events;").count, 1)
+    }
+
     func testCleanupBackupIncludesCommittedWALRows() throws {
         _ = try status()
         var handle: OpaquePointer?

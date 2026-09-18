@@ -38,8 +38,37 @@ jobs:
           gitleaks dir . --redact
           gitleaks git . --log-opts="--all" --redact
       - name: Workflow and snapshot checks
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_AFTER_SHA: ${{ github.event.after }}
         run: |
-          git diff --check
+          case "$EVENT_NAME" in
+            pull_request)
+              merge_base="$(git merge-base "$PR_BASE_SHA" HEAD)"
+              git log --format= --check --diff-merges=remerge "$merge_base..HEAD"
+              ;;
+            push)
+              tip="${PUSH_AFTER_SHA:-HEAD}"
+              git cat-file -e "$tip^{commit}"
+              if [[ -n "${PUSH_BEFORE_SHA:-}" && ! "$PUSH_BEFORE_SHA" =~ ^0+$ ]] && git cat-file -e "$PUSH_BEFORE_SHA^{commit}" 2>/dev/null; then
+                git log --format= --check --diff-merges=remerge "$PUSH_BEFORE_SHA..$tip"
+              else
+                # No reachable before-SHA (first push, or a force-push over an
+                # unfetched commit): check the tip alone rather than walking all
+                # of history through --check.
+                git log -1 --format= --check --diff-merges=remerge "$tip"
+              fi
+              ;;
+            workflow_dispatch)
+              git log -1 --format= --check --diff-merges=remerge HEAD
+              ;;
+            *)
+              echo "Unsupported event for committed-range check: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
           actionlint
           zizmor --offline --persona auditor .github/workflows
           python3 -B scripts/verify-vendor.py
@@ -61,6 +90,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Record native toolchain
         run: |
           mkdir -p reports/native
@@ -87,11 +117,39 @@ jobs:
         continue-on-error: true # Report inherited findings during baseline calibration.
         run: swiftlint lint --strict --no-cache --config .swiftlint.yml --reporter json > reports/native/swiftlint.json
       - name: Source and release script checks
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_AFTER_SHA: ${{ github.event.after }}
         run: |
-          git diff --check
+          case "$EVENT_NAME" in
+            pull_request)
+              merge_base="$(git merge-base "$PR_BASE_SHA" HEAD)"
+              git log --format= --check --diff-merges=remerge "$merge_base..HEAD"
+              ;;
+            push)
+              tip="${PUSH_AFTER_SHA:-HEAD}"
+              git cat-file -e "$tip^{commit}"
+              if [[ -n "${PUSH_BEFORE_SHA:-}" && ! "$PUSH_BEFORE_SHA" =~ ^0+$ ]] && git cat-file -e "$PUSH_BEFORE_SHA^{commit}" 2>/dev/null; then
+                git log --format= --check --diff-merges=remerge "$PUSH_BEFORE_SHA..$tip"
+              else
+                # No reachable before-SHA (first push, or a force-push over an
+                # unfetched commit): check the tip alone rather than walking all
+                # of history through --check.
+                git log -1 --format= --check --diff-merges=remerge "$tip"
+              fi
+              ;;
+            workflow_dispatch)
+              git log -1 --format= --check --diff-merges=remerge HEAD
+              ;;
+            *)
+              echo "Unsupported event for committed-range check: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
           for script in scripts/*.sh; do bash -n "$script"; done
-          python3 -B -m unittest discover -s scripts/tests -p 'test_release_scripts.py' -v
-          python3 -B -m unittest discover -s scripts/tests -p 'test_tooling.py' -v
+          python3 -B -m unittest discover -s scripts/tests -v
       - name: Test with coverage
         run: |
           swift build --scratch-path "$RUNNER_TEMP/nav-center-swift" --enable-code-coverage
