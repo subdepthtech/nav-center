@@ -1,4 +1,5 @@
 import XCTest
+import Darwin
 import struct NavCenterCore.CreateApplicationResult
 import struct NavCenterCore.MasterResumeSaveResult
 import struct NavCenterCore.MasterResumeSnapshot
@@ -129,6 +130,23 @@ final class UXReadinessTests: XCTestCase {
     }
 
     @MainActor
+    func testMasterResumeRejectsExternalChangeAndKeepsDraft() async throws {
+        let service = UXTestService()
+        let store = DashboardStore(service: service)
+        await store.loadMasterResume()
+        store.masterResumeContent = "profile:\n  name: Synthetic unsaved draft\n"
+        service.masterResumeOnDiskContent = "profile:\n  name: Synthetic external edit\n"
+
+        let outcome = await store.saveMasterResume()
+
+        guard case .notSaved = outcome else { return XCTFail("Expected the optimistic lock to reject the save") }
+        XCTAssertTrue(service.savedMasterResumeContent.isEmpty)
+        XCTAssertTrue(store.masterResumeContent.contains("Synthetic unsaved draft"))
+        XCTAssertTrue(store.hasUnsavedMasterResume)
+        XCTAssertNotNil(store.errorMessage)
+    }
+
+    @MainActor
     func testNativeMasterResumeRejectsExternalChangeAndKeepsDraft() async throws {
         let root = try workspace()
         let store = DashboardStore(service: NativeDashboardService(repoRoot: root))
@@ -137,11 +155,63 @@ final class UXReadinessTests: XCTestCase {
         let resume = root.appendingPathComponent("master-resumes/master_primary.yaml")
         let external = "profile:\n  name: Synthetic external edit\n"
         try external.write(to: resume, atomically: true, encoding: .utf8)
-        await store.saveMasterResume()
+
+        let outcome = await store.saveMasterResume()
+
+        guard case .notSaved = outcome else { return XCTFail("Expected the native optimistic lock to reject the save") }
         XCTAssertEqual(try String(contentsOf: resume), external)
         XCTAssertTrue(store.masterResumeContent.contains("Synthetic unsaved draft"))
         XCTAssertTrue(store.hasUnsavedMasterResume)
         XCTAssertNotNil(store.errorMessage)
+    }
+
+    @MainActor
+    func testMasterResumeSaveRecoversMissingSnapshotWithOptimisticLock() async {
+        let service = UXTestService()
+        let original = service.masterResumeOnDiskContent
+        let store = DashboardStore(service: service)
+        let draft = "profile:\n  name: Synthetic recovered draft\n"
+        store.masterResumeContent = draft
+
+        let outcome = await store.saveMasterResume()
+
+        XCTAssertEqual(outcome, .saved)
+        XCTAssertEqual(service.savedMasterResumeExpectedContent, original)
+        XCTAssertEqual(service.savedMasterResumeContent, draft)
+        XCTAssertEqual(service.masterResumeOnDiskContent, draft)
+        XCTAssertFalse(store.hasUnsavedMasterResume)
+    }
+
+    @MainActor
+    func testMasterResumeSaveWithSnapshotReturnsSavedOutcome() async {
+        let service = UXTestService()
+        let store = DashboardStore(service: service)
+        await store.loadMasterResume()
+        let original = store.masterResumeContent
+        store.masterResumeContent = "profile:\n  name: Synthetic saved draft\n"
+
+        let outcome = await store.saveMasterResume()
+
+        XCTAssertEqual(outcome, .saved)
+        XCTAssertEqual(service.savedMasterResumeExpectedContent, original)
+        XCTAssertFalse(store.hasUnsavedMasterResume)
+    }
+
+    @MainActor
+    func testMasterResumeMissingSnapshotLoadFailureIsObservableAndKeepsDraft() async {
+        let service = UXTestService()
+        service.masterResumeLoadError = DashboardAPIError.serverUnavailable("Synthetic load failure")
+        let store = DashboardStore(service: service)
+        let draft = "profile:\n  name: Synthetic retained draft\n"
+        store.masterResumeContent = draft
+
+        let outcome = await store.saveMasterResume()
+
+        guard case .notSaved(let message) = outcome else { return XCTFail("Expected a failed save outcome") }
+        XCTAssertTrue(message.contains("draft has been kept"))
+        XCTAssertEqual(store.masterResumeContent, draft)
+        XCTAssertTrue(store.hasUnsavedMasterResume)
+        XCTAssertTrue(service.savedMasterResumeContent.isEmpty)
     }
 
     @MainActor
@@ -195,18 +265,127 @@ final class UXReadinessTests: XCTestCase {
     }
 
     @MainActor
-    func testCorruptTrackerPreservesLastSnapshotAndReportsFailure() async throws {
+    func testCorruptTrackerDegradesToPackagesAndRefusesTrackerWrites() async throws {
         let root = try workspace()
         let service = NativeDashboardService(repoRoot: root)
+        _ = try service.fetchSummary()
+        let name = "2020-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+        let preview = try service.previewPackageCleanup(olderThanDays: 7)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("tracking", isDirectory: true), withIntermediateDirectories: false)
+        let tracker = root.appendingPathComponent("tracking/applications.sqlite")
+        let corruptBytes = Data("not a sqlite database".utf8)
+        try corruptBytes.write(to: tracker)
+
+        let summary = try service.fetchSummary()
+        let response = try service.fetchApplications(limit: 10)
+        let packageResponse = try service.fetchPackage(named: name)
+        XCTAssertEqual(summary.totals.packages, 1)
+        XCTAssertEqual(packageResponse.package.name, name)
+        XCTAssertEqual(response.applications.map(\.packageName), [name])
+        XCTAssertFalse(response.sources.tracker.available)
+        XCTAssertEqual(response.sources.tracker.warnings.count, 1)
+        XCTAssertTrue(response.sources.tracker.warnings[0].contains("Packages are still available"))
         let store = DashboardStore(service: service)
-        await store.bootstrap()
-        let prior = store.summary?.generatedAt
-        try Data("not a sqlite database".utf8).write(to: root.appendingPathComponent("tracking/applications.sqlite"))
-        XCTAssertThrowsError(try service.fetchSummary())
-        await store.refresh()
-        XCTAssertEqual(store.summary?.generatedAt, prior)
-        XCTAssertNotNil(store.dataWarningMessage)
-        XCTAssertTrue(store.errorMessage?.contains("tracker could not be read") == true)
+        try await store.refreshAll()
+        XCTAssertTrue(store.dataWarningMessage?.contains("tracker could not be read") == true)
+
+        XCTAssertThrowsError(try service.updatePackageStatus(packageName: name, status: .submitted)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("Status changes are disabled"))
+        }
+        XCTAssertThrowsError(try service.applyPackageCleanup(olderThanDays: 7, deleteTracked: true, expectedPreview: preview)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("Tracked cleanup"))
+        }
+        XCTAssertEqual(try Data(contentsOf: tracker), corruptBytes)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("applications/" + name).path))
+    }
+
+    func testHealthyTrackerLoadsAndAcceptsStatusUpdatesWithoutWarning() throws {
+        let root = try workspace()
+        let service = NativeDashboardService(repoRoot: root)
+        _ = try service.fetchSummary()
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+
+        _ = try service.updatePackageStatus(packageName: name, status: .submitted)
+        let response = try service.fetchApplications(limit: 10)
+        XCTAssertTrue(response.sources.tracker.available)
+        XCTAssertTrue(response.sources.tracker.warnings.isEmpty)
+        XCTAssertEqual(response.applications.first?.status, "Submitted")
+
+        let update = try service.updatePackageStatus(packageName: name, status: .interview)
+        XCTAssertEqual(update.newStatus, "Interview")
+    }
+
+    func testMissingTrackerIsNormalPackageOnlyViewWithoutWarning() throws {
+        let root = try workspace()
+        let service = NativeDashboardService(repoRoot: root)
+        _ = try service.fetchSummary()
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+
+        let response = try service.fetchApplications(limit: 10)
+
+        XCTAssertFalse(response.sources.tracker.available)
+        XCTAssertTrue(response.sources.tracker.warnings.isEmpty)
+        XCTAssertEqual(response.applications.map(\.packageName), [name])
+        XCTAssertEqual(response.applications.first?.source.package, true)
+        XCTAssertEqual(response.applications.first?.source.tracker, false)
+    }
+
+    func testUnreadableTrackerDirectoryDegradesToPackagesAndRefusesWrites() throws {
+        let root = try workspace()
+        let service = NativeDashboardService(repoRoot: root)
+        _ = try service.fetchSummary()
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+        let tracking = root.appendingPathComponent("tracking", isDirectory: true)
+        try FileManager.default.createDirectory(at: tracking, withIntermediateDirectories: false)
+        XCTAssertEqual(chmod(tracking.path, 0), 0)
+        defer { _ = chmod(tracking.path, 0o700) }
+
+        let response = try service.fetchApplications(limit: 10)
+
+        XCTAssertEqual(response.applications.map(\.packageName), [name])
+        XCTAssertFalse(response.sources.tracker.available)
+        XCTAssertEqual(response.sources.tracker.warnings, ["The tracker could not be read. Packages are still available, but status changes and tracked cleanup are disabled until the tracker is accessible and valid."])
+        XCTAssertThrowsError(try service.updatePackageStatus(packageName: name, status: .submitted)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("Status changes are disabled"))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: tracking.appendingPathComponent("applications.sqlite").path))
+    }
+
+    func testSymlinkedTrackerDirectoryStillFailsPackageLoading() throws {
+        let root = try workspace()
+        let service = NativeDashboardService(repoRoot: root)
+        _ = try service.fetchSummary()
+        let tracking = root.appendingPathComponent("tracking", isDirectory: true)
+        let outside = root.appendingPathComponent("outside-tracking", isDirectory: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: false)
+        try FileManager.default.createSymbolicLink(at: tracking, withDestinationURL: outside)
+
+        XCTAssertThrowsError(try service.fetchApplications(limit: 10)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("symbolic link"))
+        }
+    }
+
+    func testAbsentTrackerDirectoryHasNoWarningAndFirstStatusCreatesIt() throws {
+        let root = try workspace()
+        let service = NativeDashboardService(repoRoot: root)
+        _ = try service.fetchSummary()
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+        let tracking = root.appendingPathComponent("tracking", isDirectory: true)
+
+        let response = try service.fetchApplications(limit: 10)
+
+        XCTAssertEqual(response.applications.map(\.packageName), [name])
+        XCTAssertFalse(response.sources.tracker.available)
+        XCTAssertTrue(response.sources.tracker.warnings.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: tracking.path))
+        _ = try service.updatePackageStatus(packageName: name, status: .submitted)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: tracking.appendingPathComponent("applications.sqlite").path))
+        XCTAssertTrue(try service.fetchApplications(limit: 10).sources.tracker.available)
     }
 
     @MainActor
@@ -265,6 +444,75 @@ final class UXReadinessTests: XCTestCase {
     }
 
     @MainActor
+    func testCleanupWithoutPreviewIsRefusedWithPreviewFirstMessage() async {
+        let service = UXTestService()
+        let store = DashboardStore(service: service)
+
+        await store.applyPackageCleanup()
+
+        XCTAssertEqual(store.errorMessage, "Preview the packages before confirming cleanup.")
+        XCTAssertEqual(service.cleanupApplyCallCount, 0)
+    }
+
+    @MainActor
+    func testCleanupWithDifferentAgeThresholdIsRefusedAsStale() async {
+        let service = UXTestService()
+        let store = DashboardStore(service: service)
+        store.cleanupPreview = service.cleanupPreview(olderThanDays: 30)
+
+        await store.applyPackageCleanup(olderThanDays: 7)
+
+        XCTAssertTrue(store.errorMessage?.contains("stale") == true)
+        XCTAssertFalse(store.errorMessage?.contains("Preview the packages before confirming cleanup.") == true)
+        XCTAssertEqual(service.cleanupApplyCallCount, 0)
+    }
+
+    @MainActor
+    func testCleanupAlreadyRunningDoesNotStartAgainOrRequestPreview() async {
+        let service = UXTestService()
+        let started = expectation(description: "Cleanup started")
+        let release = DispatchSemaphore(value: 0)
+        service.cleanupApplyStarted = started
+        service.cleanupApplyRelease = release
+        let store = DashboardStore(service: service)
+        let preview = service.cleanupPreview(olderThanDays: 7)
+        store.cleanupPreview = preview
+
+        let firstCleanup = Task { await store.applyPackageCleanup(confirmedPreview: preview) }
+        await fulfillment(of: [started], timeout: 2)
+        await store.applyPackageCleanup(confirmedPreview: preview)
+
+        XCTAssertEqual(service.cleanupApplyCallCount, 1)
+        XCTAssertEqual(store.cleanupMessage, "Package cleanup is already running.")
+        XCTAssertFalse(store.errorMessage?.contains("Preview") == true)
+
+        release.signal()
+        await firstCleanup.value
+    }
+
+    @MainActor
+    func testSuccessfulCleanupReportsResultRetainsRefreshedPreviewAndRefreshesDashboard() async {
+        let service = UXTestService()
+        service.cleanupWarnings = ["Synthetic cleanup warning."]
+        let store = DashboardStore(service: service)
+        let preview = service.cleanupPreview(olderThanDays: 7)
+        service.cleanupPreviewAfterApply = service.cleanupPreview(olderThanDays: 7, packageName: "2020-01-02_Remaining_Engineer")
+        store.cleanupPreview = preview
+
+        await store.applyPackageCleanup(confirmedPreview: preview)
+
+        XCTAssertEqual(service.cleanupApplyCallCount, 1)
+        XCTAssertEqual(service.cleanupPreviewCallCount, 1)
+        XCTAssertEqual(service.summaryCallCount, 1)
+        XCTAssertEqual(service.applicationsCallCount, 1)
+        XCTAssertEqual(store.cleanupPreview, service.cleanupPreviewAfterApply)
+        XCTAssertTrue(store.cleanupMessage?.contains("Removed 1 package.") == true)
+        XCTAssertTrue(store.cleanupMessage?.contains("Backup: cleanup-backup") == true)
+        XCTAssertTrue(store.cleanupMessage?.contains("Synthetic cleanup warning.") == true)
+        XCTAssertNotNil(store.summary)
+    }
+
+    @MainActor
     func testCleanupRequiresDisplayedPreviewAndRejectsChangedPackage() async throws {
         let root = try workspace()
         let service = NativeDashboardService(repoRoot: root)
@@ -309,6 +557,17 @@ private final class UXTestService: DashboardServicing, @unchecked Sendable {
     let repoRoot = URL(fileURLWithPath: "/tmp/nav-center-intake-test")
     var createdRequests: [JobDescriptionIntakeRequest] = []
     var savedMasterResumeContent = ""
+    var savedMasterResumeExpectedContent: String?
+    var masterResumeOnDiskContent = "profile:\n  name: Example Candidate\n"
+    var masterResumeLoadError: Error?
+    var cleanupApplyStarted: XCTestExpectation?
+    var cleanupApplyRelease: DispatchSemaphore?
+    var cleanupWarnings: [String] = []
+    var cleanupPreviewAfterApply: PackageCleanupPreview?
+    private(set) var cleanupPreviewCallCount = 0
+    private(set) var cleanupApplyCallCount = 0
+    private(set) var summaryCallCount = 0
+    private(set) var applicationsCallCount = 0
     private let requestLock = NSLock()
     private var recordedRequests: [CodexChatRequest] = []
     var sentCodexRequests: [CodexChatRequest] { requestLock.lock(); defer { requestLock.unlock() }; return recordedRequests }
@@ -336,15 +595,21 @@ private final class UXTestService: DashboardServicing, @unchecked Sendable {
     func loadMasterResume() throws -> MasterResumeSnapshot {
         loadStarted?.fulfill()
         if let loadRelease { _ = loadRelease.wait(timeout: .now() + 5) }
+        if let masterResumeLoadError { throw masterResumeLoadError }
         return MasterResumeSnapshot(
             relativePath: "master-resumes/master_primary.yaml",
-            content: "profile:\n  name: Example Candidate\n",
+            content: masterResumeOnDiskContent,
             modifiedAt: "2099-04-01T12:00:00Z"
         )
     }
 
     func saveMasterResume(content: String, expectedContent: String?) throws -> MasterResumeSaveResult {
+        savedMasterResumeExpectedContent = expectedContent
+        guard expectedContent == masterResumeOnDiskContent else {
+            throw DashboardAPIError.serverUnavailable("Master resume changed on disk. Reload and reconcile your draft before saving.")
+        }
         savedMasterResumeContent = content
+        masterResumeOnDiskContent = content
         return MasterResumeSaveResult(
             relativePath: "master-resumes/master_primary.yaml",
             savedURL: repoRoot.appendingPathComponent("master-resumes/master_primary.yaml"),
@@ -354,6 +619,7 @@ private final class UXTestService: DashboardServicing, @unchecked Sendable {
     }
 
     func fetchSummary() throws -> DashboardSummary {
+        summaryCallCount += 1
         summaryStarted?.fulfill()
         if let summaryRelease { _ = summaryRelease.wait(timeout: .now() + 5) }
         return DashboardSummary(
@@ -386,7 +652,8 @@ private final class UXTestService: DashboardServicing, @unchecked Sendable {
     }
 
     func fetchApplications(limit: Int) throws -> ApplicationsResponse {
-        ApplicationsResponse(
+        applicationsCallCount += 1
+        return ApplicationsResponse(
             generatedAt: "2099-04-01T12:00:00Z",
             total: 1,
             limit: limit,
@@ -442,11 +709,39 @@ private final class UXTestService: DashboardServicing, @unchecked Sendable {
     }
 
     func previewPackageCleanup(olderThanDays: Int) throws -> PackageCleanupPreview {
-        throw DashboardAPIError.serverUnavailable("not used")
+        cleanupPreviewCallCount += 1
+        return cleanupPreviewAfterApply ?? cleanupPreview(olderThanDays: olderThanDays)
     }
 
     func applyPackageCleanup(olderThanDays: Int, deleteTracked: Bool, expectedPreview: PackageCleanupPreview) throws -> PackageCleanupResult {
-        throw DashboardAPIError.serverUnavailable("not used")
+        cleanupApplyCallCount += 1
+        cleanupApplyStarted?.fulfill()
+        if let cleanupApplyRelease { _ = cleanupApplyRelease.wait(timeout: .now() + 5) }
+        return PackageCleanupResult(
+            preview: expectedPreview,
+            removedPackages: expectedPreview.candidates,
+            backupURL: repoRoot.appendingPathComponent("tmp/package-cleanup/cleanup-backup"),
+            manifestURL: repoRoot.appendingPathComponent("tmp/package-cleanup/cleanup-backup/manifest.json"),
+            warnings: cleanupWarnings
+        )
+    }
+
+    func cleanupPreview(olderThanDays: Int, packageName: String = "2020-01-01_Synthetic_Engineer") -> PackageCleanupPreview {
+        let candidate = PackageCleanupCandidate(
+            packageName: packageName,
+            packageDate: "2020-01-01",
+            applicationDir: "applications/\(packageName)",
+            trackerID: nil,
+            status: "Package Only",
+            isTracked: false
+        )
+        return PackageCleanupPreview(
+            today: "2099-04-01",
+            cutoffDate: "2099-03-25",
+            olderThanDays: olderThanDays,
+            candidates: [candidate],
+            fingerprint: "synthetic-fingerprint-\(olderThanDays)"
+        )
     }
 
     func importDocuments(_ urls: [URL]) throws -> [ImportedDocument] {

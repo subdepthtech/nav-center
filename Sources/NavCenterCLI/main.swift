@@ -55,7 +55,18 @@ struct NavCenterCLI {
             let path = try parser.requiredOption("--manifest")
             let manifest = path.hasPrefix("/") ? URL(fileURLWithPath: path) : workspace.appendingPathComponent(path)
             let result = try PackageCleanup(repoRoot: workspace).restore(manifestURL: manifest, confirmed: parser.flag("--confirm"))
-            print("Restored \(result.preview.candidates.count) package(s).")
+            let restored = result.restoredPackages.count
+            let alreadyInPlace = result.preview.candidates.count - restored
+            if restored == 0 && result.restoredTrackerRows == 0 {
+                print("Restored 0 packages. \(alreadyInPlace) already in place; nothing to do.")
+            } else {
+                var message = "Restored \(restored) package\(restored == 1 ? "" : "s")."
+                if result.restoredTrackerRows > 0 {
+                    message += " Restored \(result.restoredTrackerRows) tracker row\(result.restoredTrackerRows == 1 ? "" : "s")."
+                }
+                if alreadyInPlace > 0 { message += " \(alreadyInPlace) already in place." }
+                print(message)
+            }
             for warning in result.warnings { print("Warning: \(warning)") }
         case "create-package":
             let company = try parser.requiredOption("--company")

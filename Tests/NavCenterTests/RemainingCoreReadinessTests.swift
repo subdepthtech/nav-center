@@ -23,6 +23,50 @@ final class RemainingCoreReadinessTests: XCTestCase {
         XCTAssertTrue(restored.stdout.contains("Restored 1 package"))
     }
 
+    func testPackagedCLIRestoreReportsAlreadyPresentPackagesAsNothingToDo() throws {
+        let f = try fixture()
+        let name = "2020-01-01_Example_Engineer"
+        let package = f.root.appendingPathComponent("applications/" + name)
+        try FileManager.default.moveItem(at: f.package, to: package)
+        let cleaner = PackageCleanup(repoRoot: f.root)
+        let preview = try cleaner.preview(olderThanDays: 7, today: "2026-09-04")
+        let result = try cleaner.apply(olderThanDays: 7, today: preview.today, deleteTracked: false, confirmed: true, expectedPreview: preview)
+        _ = try cleaner.restore(manifestURL: result.manifestURL, confirmed: true)
+
+        var manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: result.manifestURL)) as? [String: Any])
+        manifest["state"] = "completed"
+        try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys]).write(to: result.manifestURL, options: .atomic)
+
+        let binary = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("navcenterctl")
+        let restored = try ProcessRunner.run(binary.path, ["restore-cleanup", "--workspace", f.root.path, "--manifest", result.manifestURL.path, "--confirm"])
+        XCTAssertEqual(restored.status, 0, restored.stderr)
+        XCTAssertTrue(restored.stdout.contains("Restored 0 packages"))
+        XCTAssertTrue(restored.stdout.contains("1 already in place; nothing to do"))
+    }
+
+    func testPackagedCLIRestoreReportsTrackerRowsWhenPackageWasAlreadyMoved() throws {
+        let f = try fixture()
+        let name = "2020-01-01_Example_Engineer"
+        let package = f.root.appendingPathComponent("applications/" + name)
+        try FileManager.default.moveItem(at: f.package, to: package)
+        _ = try TrackerStore(repoRoot: f.root).updateStatus(packageName: name, status: .submitted)
+        let cleaner = PackageCleanup(repoRoot: f.root)
+        let preview = try cleaner.preview(olderThanDays: 7, today: "2026-09-04")
+        let result = try cleaner.apply(olderThanDays: 7, today: preview.today, deleteTracked: true, confirmed: true, expectedPreview: preview)
+        let retained = result.manifestURL.deletingLastPathComponent()
+            .appendingPathComponent("packages/" + name, isDirectory: true)
+        try PathSafety.moveItem(retained, to: package, inside: f.root, label: "synthetic interrupted restore")
+
+        let binary = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("navcenterctl")
+        let restored = try ProcessRunner.run(binary.path, ["restore-cleanup", "--workspace", f.root.path, "--manifest", result.manifestURL.path, "--confirm"])
+
+        XCTAssertEqual(restored.status, 0, restored.stderr)
+        XCTAssertTrue(restored.stdout.contains("Restored 0 packages"))
+        XCTAssertTrue(restored.stdout.contains("Restored 2 tracker rows"))
+        XCTAssertFalse(restored.stdout.contains("nothing to do"))
+        XCTAssertEqual(try TrackerStore(repoRoot: f.root).loadRows().count, 1)
+    }
+
     private func fixture() throws -> (root: URL, package: URL, vault: URL) {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent("navcenter-final-core-\(UUID().uuidString)", isDirectory: true)
         let root = base.appendingPathComponent("workspace", isDirectory: true)

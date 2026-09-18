@@ -37,7 +37,10 @@ public final class DocumentImporter {
             var writes: [(URL, Data)] = []
             var results: [ImportedDocument] = []
             for sourceURL in urls {
-                let original = try PathSafety.readData(sourceURL, inside: sourceURL.deletingLastPathComponent(), label: "source document")
+                // Resolve only the user-selected source's parent; the leaf must still pass the no-follow read.
+                let sourceParent = try PathSafety.realpath(sourceURL.deletingLastPathComponent(), label: "source document parent")
+                let sourceFile = sourceParent.appendingPathComponent(sourceURL.lastPathComponent)
+                let original = try PathSafety.readData(sourceFile, inside: sourceParent, label: "source document")
                 let base = sanitizedBaseName(sourceURL.deletingPathExtension().lastPathComponent)
                 let kind = sourceURL.pathExtension.isEmpty ? "txt" : sourceURL.pathExtension.lowercased()
                 let text: String

@@ -40,13 +40,17 @@ public struct PackageCleanupPreview: Codable, Equatable {
 public struct PackageCleanupResult: Codable, Equatable {
     public let preview: PackageCleanupPreview
     public let removedPackages: [PackageCleanupCandidate]
+    public let restoredPackages: [PackageCleanupCandidate]
+    public let restoredTrackerRows: Int
     public let backupURL: URL
     public let manifestURL: URL
     public var warnings: [String]
 
-    public init(preview: PackageCleanupPreview, removedPackages: [PackageCleanupCandidate], backupURL: URL, manifestURL: URL, warnings: [String] = []) {
+    public init(preview: PackageCleanupPreview, removedPackages: [PackageCleanupCandidate], restoredPackages: [PackageCleanupCandidate] = [], restoredTrackerRows: Int = 0, backupURL: URL, manifestURL: URL, warnings: [String] = []) {
         self.preview = preview
         self.removedPackages = removedPackages
+        self.restoredPackages = restoredPackages
+        self.restoredTrackerRows = restoredTrackerRows
         self.backupURL = backupURL
         self.manifestURL = manifestURL
         self.warnings = warnings
@@ -237,6 +241,7 @@ public final class PackageCleanup {
         try source?.validateSchema()
         try connection?.validateSchema()
         var movedThisAttempt: [PackageCleanupCandidate] = []
+        var restoredTrackerRows = 0
         let operation = {
             if let connection, let source {
                 var insertions: [String] = []
@@ -287,6 +292,7 @@ public final class PackageCleanup {
                 }
                 // Validate every affected record before inserting any of them.
                 for statement in insertions { try connection.execute(statement) }
+                restoredTrackerRows = insertions.count
             }
             for candidate in toMove {
                 let retained = packagesBackup.appendingPathComponent(candidate.packageName)
@@ -316,7 +322,7 @@ public final class PackageCleanup {
             do { try TrackerStore(repoRoot: repoRoot, dbPath: dbPath).refreshMarkdownSnapshot() }
             catch { warnings.append("Restore committed. Tracker Markdown refresh failed: \(error.localizedDescription)") }
         }
-        return PackageCleanupResult(preview: manifest.preview, removedPackages: [], backupURL: manifest.databaseExisted ? backup : evidence, manifestURL: manifestURL, warnings: warnings)
+        return PackageCleanupResult(preview: manifest.preview, removedPackages: [], restoredPackages: movedThisAttempt, restoredTrackerRows: restoredTrackerRows, backupURL: manifest.databaseExisted ? backup : evidence, manifestURL: manifestURL, warnings: warnings)
     }
 
     private func lockEvidenceDirectory(_ directory: URL) throws -> Int32 {

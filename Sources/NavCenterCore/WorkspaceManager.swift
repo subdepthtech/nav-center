@@ -52,14 +52,30 @@ public final class WorkspaceManager {
 
     @discardableResult
     public func initialize() throws -> WorkspaceInitializationResult {
+        try initialize(includeTrackingDirectory: true)
+    }
+
+    /// Prepares the workspace surfaces needed for package browsing without
+    /// opening or creating the optional tracker directory. An existing tracker
+    /// path is still checked for symbolic links before package data is loaded.
+    @discardableResult
+    public func initializeForPackageBrowsing() throws -> WorkspaceInitializationResult {
+        try initialize(includeTrackingDirectory: false)
+    }
+
+    private func initialize(includeTrackingDirectory: Bool) throws -> WorkspaceInitializationResult {
         try PathSafety.createDirectory(workspaceRoot, inside: workspaceRoot, label: "workspace root")
 
         var created: [String] = []
-        for relativePath in Self.requiredDirectories {
+        for relativePath in Self.requiredDirectories where includeTrackingDirectory || relativePath != "tracking" {
             let url = workspaceRoot.appendingPathComponent(relativePath, isDirectory: true)
             let existed = fileManager.fileExists(atPath: url.path)
             try PathSafety.createDirectory(url, inside: workspaceRoot, label: relativePath)
             if !existed { created.append(relativePath) }
+        }
+        if !includeTrackingDirectory {
+            let tracking = workspaceRoot.appendingPathComponent("tracking", isDirectory: true)
+            try PathSafety.assertNoSymlinkSegments(tracking, root: workspaceRoot, label: "tracking directory")
         }
 
         let masterResumeURL = workspaceRoot.appendingPathComponent("master-resumes/master_primary.yaml")

@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import NavCenterCore
 
 // Configuration is immutable. DashboardStore serializes local operations; Codex
@@ -130,17 +131,19 @@ final class NativeDashboardService: @unchecked Sendable {
     }
 
     func updatePackageStatus(packageName: String, status: TrackerStatus) throws -> TrackerStatusUpdateResult {
-        try ensureWorkspace()
+        try ensurePackageWorkspace()
+        try ensureTrackerWriteAllowed(failureMessage: "Status changes are disabled because the tracker could not be read.")
         return try TrackerStore(repoRoot: repoRoot, dbPath: trackerDB).updateStatus(packageName: packageName, status: status)
     }
 
     func previewPackageCleanup(olderThanDays: Int = 7) throws -> PackageCleanupPreview {
-        try ensureWorkspace()
+        try ensurePackageWorkspace()
         return try PackageCleanup(repoRoot: repoRoot, dbPath: trackerDB).preview(olderThanDays: olderThanDays)
     }
 
     func applyPackageCleanup(olderThanDays: Int = 7, deleteTracked: Bool = true, expectedPreview: PackageCleanupPreview) throws -> PackageCleanupResult {
-        try ensureWorkspace()
+        try ensurePackageWorkspace()
+        if deleteTracked { try ensureTrackerWriteAllowed(failureMessage: "Tracked cleanup is disabled because the tracker could not be read.") }
         return try PackageCleanup(repoRoot: repoRoot, dbPath: trackerDB).apply(
             olderThanDays: olderThanDays,
             deleteTracked: deleteTracked,
@@ -246,15 +249,15 @@ final class NativeDashboardService: @unchecked Sendable {
     }
 
     private func loadData() throws -> LoadedData {
-        try ensureWorkspace()
+        try ensurePackageWorkspace()
         let scan = try inspector.scanWithWarnings()
         let packages = scan.packages.map(Self.convertPackage)
         let packagesByName = Dictionary(uniqueKeysWithValues: packages.map { ($0.name, $0) })
-        let trackerRows = try loadTrackerRows()
+        let tracker = try loadTrackerRows()
         var applications: [ApplicationRecord] = []
         var usedPackages = Set<String>()
 
-        for row in trackerRows {
+        for row in tracker.rows {
             let packageName = Self.packageName(from: row.applicationDir)
             let package = packageName.flatMap { packagesByName[$0] }
             if let packageName { usedPackages.insert(packageName) }
@@ -276,11 +279,11 @@ final class NativeDashboardService: @unchecked Sendable {
             packages: packages,
             sources: DashboardSources(
                 tracker: TrackerSource(
-                    available: FileManager.default.fileExists(atPath: trackerDB.path),
+                    available: tracker.available,
                     driver: "sqlite3",
                     readOnly: false,
                     queryOnly: false,
-                    warnings: []
+                    warnings: tracker.warnings
                 ),
                 packages: PackageSource(
                     available: true,
@@ -300,6 +303,11 @@ final class NativeDashboardService: @unchecked Sendable {
         try WorkspaceManager(workspaceRoot: repoRoot).initialize()
     }
 
+    @discardableResult
+    private func ensurePackageWorkspace() throws -> WorkspaceInitializationResult {
+        try WorkspaceManager(workspaceRoot: repoRoot).initializeForPackageBrowsing()
+    }
+
     private struct TrackerRow {
         var id: String
         var date: String
@@ -314,8 +322,48 @@ final class NativeDashboardService: @unchecked Sendable {
         var updatedAt: String
     }
 
-    private func loadTrackerRows() throws -> [TrackerRow] {
-        guard FileManager.default.fileExists(atPath: trackerDB.path) else { return [] }
+    private struct TrackerReadState {
+        var rows: [TrackerRow]
+        var available: Bool
+        var warnings: [String]
+    }
+
+    private static let trackerReadWarning = "The tracker could not be read. Packages are still available, but status changes and tracked cleanup are disabled until the tracker is accessible and valid."
+
+    private func loadTrackerRows() throws -> TrackerReadState {
+        let directory = trackerDB.deletingLastPathComponent()
+        var directoryInfo = stat()
+        if lstat(directory.path, &directoryInfo) != 0 {
+            if errno == ENOENT { return TrackerReadState(rows: [], available: false, warnings: []) }
+            if errno == EACCES || errno == EPERM {
+                return TrackerReadState(rows: [], available: false, warnings: [Self.trackerReadWarning])
+            }
+            throw NavCenterError.invalidPath("Could not inspect tracking directory: \(String(cString: strerror(errno)))")
+        }
+        guard (directoryInfo.st_mode & S_IFMT) != S_IFLNK else {
+            throw NavCenterError.invalidPath("tracking directory must not contain a symbolic link: tracking")
+        }
+        guard (directoryInfo.st_mode & S_IFMT) == S_IFDIR else {
+            throw NavCenterError.invalidPath("tracking directory must be a directory.")
+        }
+        let directoryDescriptor = open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard directoryDescriptor >= 0 else {
+            if errno == EACCES || errno == EPERM {
+                return TrackerReadState(rows: [], available: false, warnings: [Self.trackerReadWarning])
+            }
+            throw NavCenterError.invalidPath("Could not open tracking directory: \(String(cString: strerror(errno)))")
+        }
+        var databaseInfo = stat()
+        let databaseStatus = fstatat(directoryDescriptor, trackerDB.lastPathComponent, &databaseInfo, AT_SYMLINK_NOFOLLOW)
+        let databaseError = errno
+        close(directoryDescriptor)
+        if databaseStatus != 0 {
+            if databaseError == ENOENT { return TrackerReadState(rows: [], available: false, warnings: []) }
+            if databaseError == EACCES || databaseError == EPERM {
+                return TrackerReadState(rows: [], available: false, warnings: [Self.trackerReadWarning])
+            }
+            throw NavCenterError.invalidPath("Could not inspect tracker database: \(String(cString: strerror(databaseError)))")
+        }
         let query = """
         SELECT id, date, company, position, apply_link AS applyLink, status, notes, next_action_date AS nextActionDate, application_dir AS applicationDir, created_at AS createdAt, updated_at AS updatedAt
         FROM applications
@@ -325,9 +373,9 @@ final class NativeDashboardService: @unchecked Sendable {
         do {
             rows = try TrackerStore.queryRows(repoRoot: repoRoot, dbPath: trackerDB, sql: query)
         } catch {
-            throw DashboardAPIError.serverUnavailable("The tracker could not be read. Check that the workspace database is accessible and valid, then refresh. Existing files have been kept.")
+            return TrackerReadState(rows: [], available: false, warnings: [Self.trackerReadWarning])
         }
-        return rows.map {
+        return TrackerReadState(rows: rows.map {
             TrackerRow(
                 id: Self.string($0["id"]),
                 date: Self.string($0["date"]),
@@ -341,6 +389,13 @@ final class NativeDashboardService: @unchecked Sendable {
                 createdAt: Self.string($0["createdAt"]),
                 updatedAt: Self.string($0["updatedAt"])
             )
+        }, available: true, warnings: [])
+    }
+
+    private func ensureTrackerWriteAllowed(failureMessage: String) throws {
+        let tracker = try loadTrackerRows()
+        guard tracker.warnings.isEmpty else {
+            throw DashboardAPIError.serverUnavailable("\(failureMessage) Packages and drafts have been kept; refresh after the tracker is accessible and valid.")
         }
     }
 
