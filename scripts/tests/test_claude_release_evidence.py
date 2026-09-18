@@ -70,7 +70,10 @@ class ClaudeReleaseEvidenceTests(unittest.TestCase):
         result = self.run_check()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("checksum sidecar matches artifact", result.stdout)
-        self.assertIn("Clean-machine evidence above is still outstanding", result.stdout)
+        self.assertIn("DMG-only checks passed", result.stdout)
+        self.assertIn("nested app and embedded CLI signature verification", result.stdout)
+        self.assertIn("distribution readiness is not established", result.stdout)
+        self.assertNotIn("Artifact-level gates passed", result.stdout)
         calls = [json.loads(line) for line in self.trace.read_text().splitlines()]
         self.assertEqual([call[0] for call in calls], ["hdiutil", "codesign", "xcrun", "spctl"])
         self.assertTrue(all(call[1][-1] == str(self.artifact) for call in calls))

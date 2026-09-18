@@ -111,6 +111,7 @@ cat <<'NOTE'
 
 Not established by this script, and required before publishing (docs/RELEASE.md,
 docs/PUBLIC_RELEASE_CHECKLIST.md):
+  - nested app and embedded CLI signature verification, and app execute assessment
   - the exact downloaded, quarantined artifact checked on a clean supported Mac
   - offline launch with a valid staple, and app version/build confirmation
   - core workflows, update behavior, and explicit uninstall/zap scope
@@ -122,4 +123,4 @@ if [ "$failures" -gt 0 ]; then
   printf '\n%d distribution gate(s) failed. Not distributable.\n' "$failures"
   exit 1
 fi
-printf '\nArtifact-level gates passed. Clean-machine evidence above is still outstanding.\n'
+printf '\nDMG-only checks passed. Nested-code verification and clean-machine evidence remain outstanding; distribution readiness is not established.\n'

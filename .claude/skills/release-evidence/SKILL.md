@@ -30,12 +30,13 @@ silently passing.
 
 ## Reporting
 
-The script ends by listing what it cannot establish — clean-machine install,
+The script ends by listing what it cannot establish — nested app and embedded CLI
+signature verification, app execute assessment, clean-machine install,
 offline launch with a valid staple, version and workflow confirmation, update and
 uninstall/zap scope, every advertised architecture, the minimum supported macOS,
 and the secret and private-data scans over tree and history. Reproduce that list
-when reporting; a passing script run means the artifact-level gates hold, not
-that the build is ready to share.
+when reporting; a passing script run establishes only the listed DMG checks.
+Nested-code verification and distribution readiness remain unestablished.
 
 Pair any result with the source revision and the packaging invocation that
 produced the artifact. A failed packaging command must not be treated as a

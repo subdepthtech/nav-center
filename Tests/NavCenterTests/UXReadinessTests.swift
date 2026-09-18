@@ -166,7 +166,7 @@ final class UXReadinessTests: XCTestCase {
     }
 
     @MainActor
-    func testMasterResumeSaveRecoversMissingSnapshotWithOptimisticLock() async {
+    func testMasterResumeSaveRefusesMissingSnapshotAndKeepsDraft() async {
         let service = UXTestService()
         let original = service.masterResumeOnDiskContent
         let store = DashboardStore(service: service)
@@ -175,11 +175,30 @@ final class UXReadinessTests: XCTestCase {
 
         let outcome = await store.saveMasterResume()
 
-        XCTAssertEqual(outcome, .saved)
-        XCTAssertEqual(service.savedMasterResumeExpectedContent, original)
-        XCTAssertEqual(service.savedMasterResumeContent, draft)
-        XCTAssertEqual(service.masterResumeOnDiskContent, draft)
-        XCTAssertFalse(store.hasUnsavedMasterResume)
+        guard case .notSaved = outcome else { return XCTFail("Expected refusal before reviewing the saved resume") }
+        XCTAssertTrue(service.savedMasterResumeContent.isEmpty)
+        XCTAssertEqual(service.masterResumeOnDiskContent, original)
+        XCTAssertEqual(store.masterResumeContent, draft)
+        XCTAssertNil(store.masterResumeSnapshot)
+        XCTAssertTrue(store.hasUnsavedMasterResume)
+    }
+
+    @MainActor
+    func testNativeMasterResumeMissingSnapshotPreservesDiskAndDraft() async throws {
+        let root = try workspace()
+        let service = NativeDashboardService(repoRoot: root)
+        let original = try service.loadMasterResume().content
+        let store = DashboardStore(service: service)
+        let draft = "profile:\n  name: Synthetic unseen draft\n"
+        store.masterResumeContent = draft
+
+        let outcome = await store.saveMasterResume()
+
+        guard case .notSaved = outcome else { return XCTFail("Expected refusal without a reviewed snapshot") }
+        XCTAssertEqual(try service.loadMasterResume().content, original)
+        XCTAssertEqual(store.masterResumeContent, draft)
+        XCTAssertNil(store.masterResumeSnapshot)
+        XCTAssertTrue(store.hasUnsavedMasterResume)
     }
 
     @MainActor
@@ -198,10 +217,15 @@ final class UXReadinessTests: XCTestCase {
     }
 
     @MainActor
-    func testMasterResumeMissingSnapshotLoadFailureIsObservableAndKeepsDraft() async {
+    func testMasterResumeLoadRecoveryDoesNotAuthorizeUnreviewedSave() async {
         let service = UXTestService()
         service.masterResumeLoadError = DashboardAPIError.serverUnavailable("Synthetic load failure")
         let store = DashboardStore(service: service)
+        await store.loadMasterResume()
+        XCTAssertNotNil(store.errorMessage)
+        XCTAssertNil(store.masterResumeSnapshot)
+        service.masterResumeLoadError = nil
+        let original = service.masterResumeOnDiskContent
         let draft = "profile:\n  name: Synthetic retained draft\n"
         store.masterResumeContent = draft
 
@@ -212,6 +236,8 @@ final class UXReadinessTests: XCTestCase {
         XCTAssertEqual(store.masterResumeContent, draft)
         XCTAssertTrue(store.hasUnsavedMasterResume)
         XCTAssertTrue(service.savedMasterResumeContent.isEmpty)
+        XCTAssertEqual(service.masterResumeOnDiskContent, original)
+        XCTAssertNil(store.masterResumeSnapshot)
     }
 
     @MainActor

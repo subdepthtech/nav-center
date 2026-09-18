@@ -388,18 +388,16 @@ final class DashboardStore: ObservableObject {
             errorMessage = message
             return .notSaved(message)
         }
+        guard let expectedContent = masterResumeSnapshot?.content else {
+            let message = "Load and review the saved master resume before saving changes. Your draft has been kept."
+            errorMessage = message
+            return .notSaved(message)
+        }
         isSavingMasterResume = true
         defer { isSavingMasterResume = false }
 
         do {
             let content = masterResumeContent
-            let expectedContent: String
-            if let snapshot = masterResumeSnapshot {
-                expectedContent = snapshot.content
-            } else {
-                let recovered = try await background { try $0.loadMasterResume() }
-                expectedContent = recovered.content
-            }
             let result = try await background { try $0.saveMasterResume(content: content, expectedContent: expectedContent) }
             masterResumeSnapshot = MasterResumeSnapshot(
                 relativePath: result.relativePath,
