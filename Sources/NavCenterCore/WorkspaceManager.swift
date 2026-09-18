@@ -16,7 +16,8 @@ public final class WorkspaceManager {
         "imports/markdown",
         "backups",
         "logs",
-        "feedback"
+        "feedback",
+        "templates"
     ]
 
     public let workspaceRoot: URL
@@ -51,25 +52,32 @@ public final class WorkspaceManager {
 
     @discardableResult
     public func initialize() throws -> WorkspaceInitializationResult {
-        try fileManager.createDirectory(at: workspaceRoot, withIntermediateDirectories: true)
-        try PathSafety.assertNoSymlinkSegments(workspaceRoot, root: workspaceRoot, label: "workspace root")
+        try PathSafety.createDirectory(workspaceRoot, inside: workspaceRoot, label: "workspace root")
 
         var created: [String] = []
         for relativePath in Self.requiredDirectories {
             let url = workspaceRoot.appendingPathComponent(relativePath, isDirectory: true)
             let existed = fileManager.fileExists(atPath: url.path)
-            try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
-            try PathSafety.assertNoSymlinkSegments(url, root: workspaceRoot, label: relativePath)
+            try PathSafety.createDirectory(url, inside: workspaceRoot, label: relativePath)
             if !existed { created.append(relativePath) }
         }
 
         let masterResumeURL = workspaceRoot.appendingPathComponent("master-resumes/master_primary.yaml")
         let masterResumeCreated: Bool
         if fileManager.fileExists(atPath: masterResumeURL.path) {
+            try PathSafety.assertExistingRegularFile(masterResumeURL, inside: workspaceRoot, label: "master resume")
             masterResumeCreated = false
         } else {
-            try seedMasterResume.write(to: masterResumeURL, atomically: true, encoding: .utf8)
+            try PathSafety.atomicWrite(Data(seedMasterResume.utf8), to: masterResumeURL, inside: workspaceRoot, label: "master resume")
             masterResumeCreated = true
+        }
+
+        for name in ["resume.css", "cover-letter.css"] {
+            let url = workspaceRoot.appendingPathComponent("templates/" + name)
+            if !fileManager.fileExists(atPath: url.path) {
+                let css = "@page { size: Letter; margin: 0.65in; } body { font-family: Helvetica, Arial, sans-serif; font-size: 10.5pt; line-height: 1.35; color: #111; } h1 { font-size: 20pt; } h2 { font-size: 13pt; } a { color: inherit; }"
+                try PathSafety.atomicWrite(Data(css.utf8), to: url, inside: workspaceRoot, label: "document template")
+            } else { try PathSafety.assertExistingRegularFile(url, inside: workspaceRoot, label: "document template") }
         }
 
         return WorkspaceInitializationResult(

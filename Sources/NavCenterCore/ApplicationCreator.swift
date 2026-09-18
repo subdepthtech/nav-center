@@ -91,7 +91,7 @@ public final class ApplicationCreator {
             throw NavCenterError.invalidPath("Both --company and --role are required.")
         }
         let date = options.date ?? currentDate()
-        guard date.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil else {
+        guard TextUtil.calendarDay(date) != nil else {
             throw NavCenterError.invalidPath("Invalid --date value: \(date)")
         }
 
@@ -105,20 +105,23 @@ public final class ApplicationCreator {
         if options.dryRun {
             return CreateApplicationResult(packageName: packageName, packageURL: packageURL, postingURL: postingURL, dryRun: true)
         }
+        try PathSafety.createDirectory(repoRoot, inside: repoRoot, label: "workspace")
+        try PathSafety.createDirectory(PathSafety.applicationsRoot(repoRoot: repoRoot), inside: repoRoot, label: "applications")
         if FileManager.default.fileExists(atPath: packageURL.path) {
             _ = try PathSafety.resolvePackage(root: repoRoot, packageName: packageName)
+            if FileManager.default.fileExists(atPath: postingURL.path), !options.overwrite {
+                throw NavCenterError.invalidPath("Posting already exists; use --overwrite to replace it.")
+            }
+            try PathSafety.atomicWrite(Data(posting.utf8), to: postingURL, inside: repoRoot, label: "posting")
         } else {
-            let applications = PathSafety.applicationsRoot(repoRoot: repoRoot)
-            try FileManager.default.createDirectory(at: applications, withIntermediateDirectories: true)
-            try PathSafety.assertNoSymlinkSegments(applications, root: repoRoot, label: "applications root")
+            let stage = repoRoot.appendingPathComponent("tmp/create-package/" + UUID().uuidString)
+            try PathSafety.createDirectory(stage.appendingPathComponent("artifacts"), inside: repoRoot, label: "package staging")
+            defer { try? FileManager.default.removeItem(at: stage) }
+            try PathSafety.atomicWrite(Data(posting.utf8), to: stage.appendingPathComponent("posting.md"), inside: repoRoot, label: "posting")
+            let draft = "# Resume draft\n\n> Draft for review. Replace placeholders using your reviewed master resume. Do not invent credentials or experience.\n\n## Summary\n\n[Add a verified summary relevant to this role.]\n\n## Experience\n\n[Add source-backed achievements.]\n"
+            try PathSafety.atomicWrite(Data(draft.utf8), to: stage.appendingPathComponent("Resume_" + packageName + ".md"), inside: repoRoot, label: "resume draft")
+            try PathSafety.moveItem(stage, to: packageURL, inside: repoRoot, label: "new package")
         }
-        if FileManager.default.fileExists(atPath: postingURL.path), !options.overwrite {
-            throw NavCenterError.invalidPath("Posting already exists: \(PathSafety.repoRelativePath(root: repoRoot, url: postingURL)) (use --overwrite to replace it)")
-        }
-        try FileManager.default.createDirectory(at: packageURL, withIntermediateDirectories: true)
-        _ = try PathSafety.resolvePackage(root: repoRoot, packageName: packageName)
-        try PathSafety.assertWritablePath(postingURL, inside: packageURL, label: "posting.md")
-        try posting.write(to: postingURL, atomically: true, encoding: .utf8)
         return CreateApplicationResult(packageName: packageName, packageURL: packageURL, postingURL: postingURL, dryRun: false)
     }
 
@@ -140,9 +143,11 @@ public final class ApplicationCreator {
     private func readSource(_ source: ApplicationSource, allowLocalURL: Bool) throws -> Source {
         switch source {
         case .job(let path):
-            let url = URL(fileURLWithPath: path, relativeTo: repoRoot).standardizedFileURL
+            let url = (path.hasPrefix("/") ? URL(fileURLWithPath: path) : repoRoot.appendingPathComponent(path)).standardizedFileURL
             try PathSafety.assertExistingRegularFile(url, inside: repoRoot, label: "Source job file")
-            return Source(type: "local_file", path: PathSafety.repoRelativePath(root: repoRoot, url: url), url: "", title: "", sourceName: "", sourceID: "", location: "", salary: "", postedDate: "", jobType: "", workSettings: "", content: try String(contentsOf: url))
+            let data = try PathSafety.readData(url, inside: repoRoot, label: "Source job file", maxBytes: 4_194_304)
+            guard let content = String(data: data, encoding: .utf8) else { throw NavCenterError.invalidPath("Source job file must contain UTF-8 text.") }
+            return Source(type: "local_file", path: PathSafety.repoRelativePath(root: repoRoot, url: url), url: "", title: "", sourceName: "", sourceID: "", location: "", salary: "", postedDate: "", jobType: "", workSettings: "", content: content)
         case .inline(let inline):
             return Source(
                 type: "pasted_text",
@@ -159,7 +164,7 @@ public final class ApplicationCreator {
                 content: inline.content
             )
         case .payload(let path):
-            let url = URL(fileURLWithPath: path, relativeTo: repoRoot).standardizedFileURL
+            let url = (path.hasPrefix("/") ? URL(fileURLWithPath: path) : repoRoot.appendingPathComponent(path)).standardizedFileURL
             if PathSafety.isInside(url, parent: repoRoot) {
                 try PathSafety.assertExistingRegularFile(url, inside: repoRoot, label: "Payload file")
             }
@@ -181,8 +186,7 @@ public final class ApplicationCreator {
             )
         case .url(let value):
             let url = try safeFetchURL(value, allowLocalURL: allowLocalURL)
-            let data = try Data(contentsOf: url)
-            let html = String(data: data, encoding: .utf8) ?? ""
+            let html = try fetchURL(url, allowLocalURL: allowLocalURL)
             return Source(type: "url", path: "", url: url.absoluteString, title: extractTitle(html), sourceName: "", sourceID: "", location: "", salary: "", postedDate: "", jobType: "", workSettings: "", content: htmlToText(html))
         }
     }
@@ -244,7 +248,7 @@ public final class ApplicationCreator {
     }
 
     private func safeFetchURL(_ value: String, allowLocalURL: Bool) throws -> URL {
-        guard let url = URL(string: value), ["http", "https"].contains(url.scheme?.lowercased() ?? ""), let host = url.host(percentEncoded: false) else {
+        guard let url = URL(string: value), ["http", "https"].contains(url.scheme?.lowercased() ?? ""), let host = url.host(percentEncoded: false), url.user == nil, url.password == nil, url.fragment == nil, !host.contains("%") else {
             throw NavCenterError.invalidPath("URL must use http or https: \(value)")
         }
         if allowLocalURL {
@@ -285,29 +289,49 @@ public final class ApplicationCreator {
     }
 
     private func isUnsafeIPAddress(_ address: String) -> Bool {
-        if let ipv4 = IPv4Address(address) {
-            let parts = ipv4.octets
-            let a = parts[0], b = parts[1]
-            return a == 0
-                || a == 10
-                || a == 127
-                || (a == 100 && (64...127).contains(b))
-                || (a == 169 && b == 254)
-                || (a == 172 && (16...31).contains(b))
-                || (a == 192 && b == 168)
-                || a >= 224
+        func unsafeV4(_ bytes: [UInt8]) -> Bool {
+            let a = bytes[0], b = bytes[1]
+            return a == 0 || a == 10 || a == 127 || (a == 100 && (64...127).contains(b))
+                || (a == 169 && b == 254) || (a == 172 && (16...31).contains(b))
+                || (a == 192 && b == 168) || a >= 224
         }
-        let lower = address.lowercased()
-        return lower == "::"
-            || lower == "::1"
-            || lower.hasPrefix("fc")
-            || lower.hasPrefix("fd")
-            || lower.hasPrefix("fe8")
-            || lower.hasPrefix("fe9")
-            || lower.hasPrefix("fea")
-            || lower.hasPrefix("feb")
-            || lower.hasPrefix("ff")
+        var ipv4 = in_addr()
+        if inet_pton(AF_INET, address, &ipv4) == 1 { return withUnsafeBytes(of: &ipv4) { unsafeV4(Array($0)) } }
+        var ipv6 = in6_addr()
+        if inet_pton(AF_INET6, address, &ipv6) == 1 {
+            return withUnsafeBytes(of: &ipv6) { raw in
+                let bytes = Array(raw)
+                if bytes.prefix(10).allSatisfy({ $0 == 0 }) && bytes[10] == 255 && bytes[11] == 255 { return unsafeV4(Array(bytes.suffix(4))) }
+                return bytes.prefix(12).allSatisfy({ $0 == 0 }) // unspecified, loopback, legacy compatible addresses
+                    || (bytes[0] & 0xfe) == 0xfc || (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80) || bytes[0] == 0xff
+            }
+        }
+        return false // Hostnames are resolved before any connection.
     }
+
+    private func fetchURL(_ url: URL, allowLocalURL: Bool) throws -> String {
+        let host = (url.host(percentEncoded: false) ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        let addresses = try resolveHost(host)
+        guard !addresses.isEmpty, allowLocalURL || !addresses.contains(where: isUnsafeIPAddress) else {
+            throw NavCenterError.invalidPath("Refusing local or private URL destination.")
+        }
+        let port = url.port ?? (url.scheme?.lowercased() == "https" ? 443 : 80)
+        var args = ["--disable", "--silent", "--show-error", "--fail", "--noproxy", "*", "--proto", "=http,https", "--connect-timeout", "5", "--max-time", "20", "--max-filesize", "4194304"]
+        var literal4 = in_addr(), literal6 = in6_addr()
+        if inet_pton(AF_INET, host, &literal4) != 1 && inet_pton(AF_INET6, host, &literal6) != 1 {
+            let pinnedAddresses = addresses.map { $0.contains(":") ? "[\($0)]" : $0 }.joined(separator: ",")
+            args += ["--resolve", "\(host):\(port):\(pinnedAddresses)"]
+        }
+        // No -L: a redirect is rejected, and DNS is pinned to the address just classified.
+        args += ["--write-out", "\n%{http_code}", "--url", url.absoluteString]
+        let result = try ProcessRunner.run("/usr/bin/curl", args, timeout: 25, maximumOutputBytes: 4_300_000)
+        guard result.status == 0, let boundary = result.stdout.lastIndex(of: "\n"),
+              let status = Int(result.stdout[result.stdout.index(after: boundary)...]), (200..<300).contains(status) else {
+            throw NavCenterError.commandFailed("Posting download failed or redirected. Open the posting and paste its text instead.")
+        }
+        return String(result.stdout[..<boundary])
+    }
+
 }
 
 private struct IPv4Address {

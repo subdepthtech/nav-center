@@ -1,65 +1,88 @@
 # Release
 
-Nav Center beta releases ship through GitHub Releases and the public Homebrew tap after public hygiene checks, signing, and notarization pass.
+Nav Center's distribution path produces a native-architecture release build, signs the CLI and app with Developer ID, notarizes and staples the DMG, and verifies signatures, Gatekeeper policy, and the final checksum before allowing artifact upload. A successful offline test is not evidence that a real signing identity or downloaded app passes those gates.
 
-## Local Beta DMG
+## Offline local packaging
 
-```sh
-NAV_CENTER_VERSION=0.1.0-beta scripts/package-beta-dmg.sh
-```
-
-Outputs:
-
-```text
-dist/NavCenter-0.1.0-beta-macos-<arch>.dmg
-dist/NavCenter-0.1.0-beta-macos-<arch>.dmg.sha256
-```
-
-Set `DEVELOPER_ID_APPLICATION` to sign the staged app and DMG:
+For an unsigned local artifact that must not be distributed:
 
 ```sh
-DEVELOPER_ID_APPLICATION="Developer ID Application: Example (TEAMID)" \
-  NAV_CENTER_VERSION=0.1.0-beta \
-  scripts/package-beta-dmg.sh
+NAV_CENTER_VERSION=0.1.0-beta.1 NAV_CENTER_BUILD=1 \
+  scripts/package-beta-dmg.sh --local
 ```
 
-## Notarization
+The name ends in `-unsigned.dmg`. This mode never invokes signing or notarization. Both packaging modes use `swift build -c release`; ordinary `scripts/build-and-run.sh build` defaults to debug. Set `NAV_CENTER_DIST_DIR` to an absolute temporary directory for isolated checks. Neither mode stops running app instances. Existing DMG, checksum, or notary-result outputs are refused rather than overwritten.
+
+## Version and architecture
+
+Set `NAV_CENTER_VERSION` to a numeric `major.minor.patch` with an optional prerelease suffix, and `NAV_CENTER_BUILD` to a positive integer. The app embeds the numeric version in `CFBundleShortVersionString`, the build number in `CFBundleVersion`, and the complete prerelease version in `NavCenterVersion`. Use a new build number for a new build.
+
+Packaging builds only the host architecture (`arm64` or `x86_64`) and checks both executables with `lipo`. The DMG name and cask hardware requirement must match. Native compilation does not establish support for an untested OS or architecture.
+
+## Distribution prerequisites
+
+Before using `--distribution`, require a clean source tree with complete Git history and preinstalled Gitleaks, then provide a valid Developer ID Application identity and the App Store Connect notarization credentials. Both current-tree and history scans must pass before compilation. Local signing may use an existing authorized keychain. Set `NAV_CENTER_SIGNING_KEYCHAIN` to select an explicit keychain; the scripts do not change the user's keychain search list.
+
+Required environment variables:
+
+- `NAV_CENTER_VERSION`, `NAV_CENTER_BUILD`
+- `DEVELOPER_ID_APPLICATION`, beginning with `Developer ID Application: `
+- `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_PRIVATE_KEY`
+
+With those values supplied through an approved secret mechanism:
 
 ```sh
-APP_STORE_CONNECT_KEY_ID=... \
-APP_STORE_CONNECT_ISSUER_ID=... \
-APP_STORE_CONNECT_PRIVATE_KEY="$(cat AuthKey_XXXX.p8)" \
-scripts/notarize-dmg.sh dist/NavCenter-0.1.0-beta-macos-arm64.dmg
+scripts/package-beta-dmg.sh --distribution
 ```
 
-Notarization is separate from local signing. A Developer ID signed build can still fail Gatekeeper until notarization and stapling pass.
+Missing values fail before building. The script signs the nested CLI, enclosing app, and DMG in that order. It requires an `Accepted` notary result, successful stapling and validation, DMG integrity, and Gatekeeper checks. The `.dmg.notary.json` retains the service result. The `.dmg.sha256` is generated after stapling and uses the artifact basename, so it can be checked after download. A failed command must not be treated as a distributable release even if intermediate files remain.
 
-## Homebrew Cask
+`scripts/notarize-dmg.sh <dmg>` supports finalizing an already signed DMG with the same credential requirements and rewrites its checksum only after successful validation. Do not reuse a checksum computed before stapling.
 
-Generate a cask file after the DMG is uploaded and the final SHA256 is known:
+## GitHub workflow
+
+The manual **Beta Release** workflow requires version and build inputs and uses the `release` environment. Configure that environment's authorized reviewers and secrets before running it. The workflow needs:
+
+- Preinstalled `gitleaks` on its runner. Both current-tree and complete-history scans must pass. A runner without Gitleaks fails closed; the workflow does not install it.
+- `DEVELOPER_ID_CERTIFICATE_BASE64`: base64-encoded Developer ID PKCS12 export.
+- `DEVELOPER_ID_CERTIFICATE_PASSWORD`: its password.
+- The Developer ID identity and three App Store Connect variables listed above as environment secrets.
+
+The workflow fetches complete history, runs hygiene and regression checks, imports the certificate into a temporary keychain, then builds and verifies the artifact. It also mounts the final DMG read-only and checks the packaged app. Temporary certificate/keychain material is removed even after failure. Checkout credentials are not persisted; the workflow has only `contents: read`, pins action commits, and never creates a GitHub Release or pushes a tap. Upload is conditional on all preceding gates succeeding.
+
+The separate CI workflow runs debug/release builds, XCTest with coverage, address/thread sanitizers, shell syntax, and offline release-script regressions. CI passing alone is not a distribution approval. Current/history secret scans do not replace review for private resume, tracker, screenshot, or workspace data.
+
+## Homebrew cask
+
+After the authorized final DMG is uploaded, use its final checksum and explicit architecture:
 
 ```sh
 scripts/update-homebrew-cask.sh \
-  0.1.0-beta \
-  "https://github.com/subdepthtech/nav-center/releases/download/v0.1.0-beta/NavCenter-0.1.0-beta-macos-arm64.dmg" \
-  "<sha256>" \
+  0.1.0-beta.1 \
+  "https://github.com/subdepthtech/nav-center/releases/download/v0.1.0-beta.1/NavCenter-0.1.0-beta.1-macos-arm64.dmg" \
+  "<final-64-character-sha256>" \
+  arm64 \
   /path/to/homebrew-tap/Casks/nav-center.rb
 ```
 
-The cask installs `Nav Center.app`, exposes `navcenterctl`, and removes App Support/preferences only through explicit `brew uninstall --zap`.
+The generator rejects malformed values, unsigned asset names, and mismatched version/architecture URLs. It declares the hardware requirement, installs the app and CLI, and removes app support/preferences only through explicit `brew uninstall --zap`. It only writes the requested cask; run `ruby -c <cask-file>` and, where already available, `brew style <cask-file>` separately. Tap publication and install/upgrade/uninstall validation require separate authorization.
 
-## Verification
-
-Run before sharing a beta artifact:
+## Required proof before sharing
 
 ```sh
-swift test
+git diff --check
+for script in scripts/*.sh; do bash -n "$script"; done
+python3 -B -m unittest discover -s scripts/tests -v
+swift test --enable-code-coverage
 swift build
-scripts/build-and-run.sh --verify
-bash -n scripts/*.sh
-hdiutil verify dist/NavCenter-0.1.0-beta-macos-<arch>.dmg
-codesign --verify --deep --strict "dist/dmg/Nav Center/Nav Center.app"
-spctl -a -vv -t execute "dist/dmg/Nav Center/Nav Center.app"
+swift build -c release
 ```
 
-Run `xcrun stapler validate` after notarization.
+The release regressions use synthetic build/signing/notary tools and never submit to Apple. For a launch smoke check, explicitly supply a disposable workspace:
+
+```sh
+NAV_CENTER_WORKSPACE_ROOT=/absolute/path/to/disposable-workspace \
+  scripts/build-and-run.sh --verify
+```
+
+This check proves only that a process remained running briefly. Before release, test the exact downloaded, quarantined artifact on a clean supported Mac: check its checksum and version, Gatekeeper acceptance, offline launch with a valid staple, core workflows, update behavior, and explicit uninstall/zap scope. Repeat for every advertised architecture and the minimum supported macOS. Retain source revision, toolchain, signature, notarization, and test evidence. No such trusted distribution proof is implied by the repository's offline tests.

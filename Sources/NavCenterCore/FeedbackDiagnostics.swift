@@ -28,7 +28,7 @@ public final class FeedbackDiagnostics {
     public init(
         workspaceRoot: URL,
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
-        appVersion: String = "0.1.0-beta",
+        appVersion: String = FeedbackDiagnostics.buildVersion,
         fileManager: FileManager = .default,
         now: @escaping () -> Date = Date.init
     ) {
@@ -39,6 +39,17 @@ public final class FeedbackDiagnostics {
         self.now = now
     }
 
+    public static var buildVersion: String {
+        var metadata = Bundle.main.infoDictionary ?? [:]
+        if metadata["NavCenterVersion"] == nil, let executable = Bundle.main.executableURL {
+            let plist = executable.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Info.plist")
+            if let data = try? Data(contentsOf: plist), let value = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] { metadata = value }
+        }
+        let version = metadata["NavCenterVersion"] as? String ?? metadata["CFBundleShortVersionString"] as? String ?? "development"
+        if let build = metadata["CFBundleVersion"] as? String { return "\(version) (\(build))" }
+        return version
+    }
+
     public func report(redact: Bool) -> FeedbackDiagnosticsReport {
         let redactor = Redactor(homeDirectory: homeDirectory, enabled: redact)
         let workspace = workspaceReport(redactor: redactor)
@@ -47,7 +58,7 @@ public final class FeedbackDiagnostics {
             appVersion: appVersion,
             macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
             workspace: workspace,
-            recentLogs: recentLogs(redactor: redactor)
+            recentLogs: redact ? [] : recentLogs(redactor: redactor)
         )
     }
 
@@ -56,7 +67,7 @@ public final class FeedbackDiagnostics {
             !fileManager.fileExists(atPath: workspaceRoot.appendingPathComponent(relativePath).path)
         }
         return WorkspaceDiagnostics(
-            path: redactor.redact(workspaceRoot.path),
+            path: redactor.enabled ? "<workspace>" : workspaceRoot.path,
             exists: fileManager.fileExists(atPath: workspaceRoot.path),
             requiredDirectoriesMissing: missing,
             hasMasterResume: fileManager.fileExists(atPath: workspaceRoot.appendingPathComponent("master-resumes/master_primary.yaml").path),

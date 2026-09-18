@@ -13,7 +13,7 @@ public final class InterviewPrepGenerator {
     }
 
     public func create(applicationPath: String, dryRun: Bool, overwrite: Bool) throws -> InterviewPrepResult {
-        let packageURL = URL(fileURLWithPath: applicationPath, relativeTo: repoRoot).standardizedFileURL
+        let packageURL = (applicationPath.hasPrefix("/") ? URL(fileURLWithPath: applicationPath) : repoRoot.appendingPathComponent(applicationPath)).standardizedFileURL
         let packageName = packageURL.lastPathComponent
         guard PathSafety.repoRelativePath(root: repoRoot, url: packageURL).split(separator: "/").count == 2,
               PathSafety.repoRelativePath(root: repoRoot, url: packageURL).hasPrefix("applications/") else {
@@ -34,12 +34,12 @@ public final class InterviewPrepGenerator {
             return InterviewPrepResult(outputURL: prepURL, wroteFile: false)
         }
 
-        let posting = Markdown.parseFrontmatter(try String(contentsOf: postingURL))
+        let posting = Markdown.parseFrontmatter(try readText(postingURL, label: "Posting"))
         let resumeName = try findResumeFile(resolved.packageURL)
         let resumeContent = try resumeName.map {
             let url = resolved.packageURL.appendingPathComponent($0)
             try PathSafety.assertExistingRegularFile(url, inside: resolved.packageURL, label: "Resume source")
-            return try String(contentsOf: url)
+            return try readText(url, label: "Resume source")
         } ?? ""
         let atsSummary = readAtsSummary(resolved.packageURL)
         var sourceFiles = ["posting.md"]
@@ -54,9 +54,14 @@ public final class InterviewPrepGenerator {
             resumeProof: resumeProof(resumeContent),
             atsSummary: atsSummary.summary
         )
-        try PathSafety.assertWritablePath(prepURL, inside: resolved.packageURL, label: "Interview prep output")
-        try content.write(to: prepURL, atomically: true, encoding: .utf8)
+        try PathSafety.atomicWrite(Data(content.utf8), to: prepURL, inside: repoRoot, label: "Interview prep output")
         return InterviewPrepResult(outputURL: prepURL, wroteFile: true)
+    }
+
+    private func readText(_ url: URL, label: String) throws -> String {
+        let data = try PathSafety.readData(url, inside: repoRoot, label: label, maxBytes: 4 * 1024 * 1024)
+        guard let text = String(data: data, encoding: .utf8) else { throw NavCenterError.invalidPath("\(label) must contain UTF-8 text.") }
+        return text
     }
 
     private func findResumeFile(_ packageURL: URL) throws -> String? {
@@ -81,11 +86,11 @@ public final class InterviewPrepGenerator {
         let atsURL = packageURL.appendingPathComponent("artifacts/ats-report.json")
         guard FileManager.default.fileExists(atPath: atsURL.path),
               (try? PathSafety.assertExistingRegularFile(atsURL, inside: packageURL, label: "ATS report")) != nil,
-              let data = try? Data(contentsOf: atsURL),
+              let data = try? PathSafety.readData(atsURL, inside: repoRoot, label: "ATS report", maxBytes: 4 * 1024 * 1024),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return (nil, "No ATS report found yet. Run `atsim scan applications/<application>` if keyword alignment needs another pass before interview prep.")
         }
-        let score = json["score"] ?? json["overall_score"] ?? (json["summary"] as? [String: Any])?["score"] ?? ""
+        let score = (json["scores"] as? [String: Any])?["overall"] ?? json["score"] ?? json["overall_score"] ?? (json["summary"] as? [String: Any])?["score"] ?? ""
         let warnings = (json["warnings"] as? [Any])?.count
         let warningText = warnings.map { "\($0) warning(s)" } ?? "no warnings recorded"
         return ("artifacts/ats-report.json", "\(score)" == "" ? "ATS report found with \(warningText)." : "ATS report found: score \(score); \(warningText).")
@@ -126,7 +131,7 @@ public final class InterviewPrepGenerator {
 
         ## 60-Second Pitch
 
-        - Draft: I am a cybersecurity and systems leader with active TS/SCI clearance and hands-on experience turning cyber requirements into operational outcomes. For this role, I would emphasize the overlap between the posting signals above and the strongest proof points from the tailored resume.
+        - Draft: Introduce your current role, one verified achievement from the resume, and why this position interests you. Include credentials or clearance only when supported by reviewed source records.
         - Practice: Keep this under 60 seconds and end with why this company/mission is interesting.
 
         ## Proof Map

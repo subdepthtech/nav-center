@@ -95,7 +95,8 @@ final class WorkspaceFeatureTests: XCTestCase {
         XCTAssertTrue(report.workspace.exists)
         XCTAssertTrue(report.workspace.requiredDirectoriesMissing.isEmpty)
         XCTAssertFalse(json.contains("/Users/tucker"))
-        XCTAssertTrue(json.contains("<home>"))
+        XCTAssertEqual(report.workspace.path, "<workspace>")
+        XCTAssertTrue(report.recentLogs.isEmpty)
     }
 
     private func makeTempDirectory() throws -> URL {

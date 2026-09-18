@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ApplicationsView: View {
     @EnvironmentObject private var store: DashboardStore
-    @State private var searchText = ""
     @State private var statusFilter = ApplicationsFilterDefaults.status
     @State private var locationFilter = ApplicationsFilterDefaults.location
     @State private var sourceFilter = ApplicationsFilterDefaults.source
@@ -23,7 +22,7 @@ struct ApplicationsView: View {
     }
 
     private var filteredApplications: [ApplicationRecord] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = store.applicationSearch.trimmingCharacters(in: .whitespacesAndNewlines)
         return store.applications.filter { application in
             let matchesStatus = statusFilter == ApplicationsFilterDefaults.status || application.status == statusFilter
             let matchesLocation = locationFilter == ApplicationsFilterDefaults.location || application.location == locationFilter
@@ -67,7 +66,7 @@ struct ApplicationsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(nsColor: .textBackgroundColor))
-        .onChange(of: searchText) { _ in resetPage() }
+        .onChange(of: store.applicationSearch) { _ in resetPage() }
         .onChange(of: statusFilter) { _ in resetPage() }
         .onChange(of: locationFilter) { _ in resetPage() }
         .onChange(of: sourceFilter) { _ in resetPage() }
@@ -82,7 +81,7 @@ struct ApplicationsView: View {
 
     private var horizontalFilterBar: some View {
         HStack(spacing: 12) {
-            ApplicationsSearchField(text: $searchText)
+            ApplicationsSearchField(text: $store.applicationSearch)
                 .frame(minWidth: 240, idealWidth: 500, maxWidth: 520)
 
             ApplicationsFilterMenu(title: ApplicationsFilterDefaults.status, selection: $statusFilter, options: statusOptions)
@@ -100,7 +99,7 @@ struct ApplicationsView: View {
 
     private var stackedFilterBar: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ApplicationsSearchField(text: $searchText)
+            ApplicationsSearchField(text: $store.applicationSearch)
                 .frame(maxWidth: .infinity)
 
             ViewThatFits(in: .horizontal) {
@@ -532,17 +531,14 @@ private struct ApplicationHealthStrip: View {
     var body: some View {
         HStack(spacing: 6) {
             ForEach(checks, id: \.label) { check in
-                Circle()
-                    .fill(check.isPassing ? Color.green : Color.blue.opacity(0.14))
-                    .overlay(
-                        Circle()
-                            .stroke(check.isPassing ? Color.green.opacity(0.35) : Color.blue.opacity(0.25), lineWidth: 1)
-                    )
-                    .frame(width: 9, height: 9)
-                    .help("\(check.label): \(check.isPassing ? "ready" : "missing")")
+                Image(systemName: check.isPassing ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(check.isPassing ? Color.green : Color.secondary)
+                    .font(.caption)
+                    .accessibilityLabel("\(check.label): \(check.isPassing ? "available" : "missing")")
+                    .help("\(check.label): \(check.isPassing ? "available" : "missing")")
             }
         }
-        .accessibilityLabel("\(readyCount) of \(checks.count) package checks ready")
+        .accessibilityElement(children: .combine)
     }
 }
 

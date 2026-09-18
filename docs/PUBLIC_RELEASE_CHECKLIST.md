@@ -4,9 +4,13 @@ Use this before making the repository public or publishing binaries.
 
 ## Must Pass
 
-- `swift test`
+- `swift test --enable-code-coverage`
 - `swift build`
+- `swift build -c release`
+- Supported address and thread sanitizer runs
 - `git diff --check`
+- `for script in scripts/*.sh; do bash -n "$script"; done`
+- `python3 -B -m unittest discover -s scripts/tests -v`
 - Secret scan over the current tree
 - Private-data scan over source, docs, tests, examples, assets, and git history
 
@@ -45,10 +49,13 @@ Excluded:
 Recommended artifact names:
 
 ```text
-NavCenter-0.1.0-beta-macos-arm64.dmg
-NavCenter-0.1.0-beta-macos-arm64.dmg.sha256
+NavCenter-0.1.0-beta.1-macos-arm64.dmg
+NavCenter-0.1.0-beta.1-macos-arm64.dmg.sha256
+NavCenter-0.1.0-beta.1-macos-arm64.dmg.notary.json
 ```
 
-Do not publish a signed app until Developer ID signing, notarization, stapling, and Gatekeeper validation are wired.
+Use the distribution gates in [RELEASE.md](RELEASE.md). The workflow fails if required secrets, preinstalled Gitleaks, either hygiene scan, signing, notarization, stapling, or artifact validation fails. Configure the release environment and runner before attempting it. Source-only CI or offline dependency-stub tests do not establish trusted distribution readiness.
+
+Before publishing, retain evidence for the exact downloaded artifact: final checksum, app version/build, Developer ID signature and nested-code validation, accepted notarization result, staple validation, Gatekeeper acceptance, and offline launch on clean machines for every advertised architecture and minimum supported macOS. Verify upgrades and explicit uninstall/zap scope using disposable data. Never publish `-unsigned.dmg` outputs.
 
 Friends/family beta releases should stay prerelease until beta feedback and privacy checks pass.

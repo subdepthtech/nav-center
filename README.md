@@ -2,20 +2,22 @@
 
 Native macOS app for reviewing local job-application packages, generated artifacts, tracker status, interview prep, and confirmation-gated workflow actions.
 
-Nav Center is local-first. It reads a workspace on disk, binds no public network service, and does not submit applications, send outreach, scrape job boards, upload private files, or mutate external accounts.
+Nav Center stores its workspace on disk and binds no public network service. It does not submit applications or send outreach. The optional Codex panel sends messages and selected package context to the services used by your signed-in Codex account. Posting URL capture makes an explicit HTTP request; paste a posting instead to avoid that request.
 
 ## Status
 
-This is an extracted public-ready source tree from a private workflow. The repository contains source code, tests, public docs, beta setup skills, release scripts, and a small synthetic sample workspace only. It does not include private resumes, application history, tracker databases, vault mirrors, generated PDFs, or local account data.
+This is a beta source tree extracted from a private workflow. The repository contains source code, tests, public docs, beta setup skills, release scripts, and a small synthetic sample workspace only. Production distribution still requires the evidence in the release checklist. Private resumes, application history, tracker databases, vault mirrors, generated PDFs, and local account data must stay outside the public repository.
 
 ## Requirements
 
 - macOS 13 or later
 - Swift 5.9 or later
-- `sqlite3` for tracker-backed views
-- Optional: `atsim` for the confirmed ATS scan action
-- Optional: `NAV_CENTER_EXPORT_BIN` for any future confirmed resume export action
-- Optional: Codex Desktop app-server for the in-app Codex panel
+- System SQLite library for tracker-backed views (no `sqlite3` command required)
+- System Ruby for bounded, safe master-resume YAML validation
+- Optional: Pandoc with `--sandbox` support, Google Chrome, and Poppler `pdftotext` for document export
+- Optional: [`atsim` 0.1.0](https://github.com/austinkennethtucker/cli/tree/cc37c5b1e3a4f7dfe17d9f043eb18021ff6faef4/atsim) (Python 3.10+) for the confirmed ATS scan action. Install that package from the CLI repository into an isolated Python environment; expose its `atsim` launcher on PATH or set `NAV_CENTER_ATSIM_BIN` to its absolute path. Nav Center supplies the scan workspace and requires a report containing `scores.overall` and `warnings`.
+- Optional: `NAV_CENTER_EXPORT_BIN` to override the built-in confirmed resume export action with a compatible external exporter
+- Optional: Codex CLI with app-server support and managed sign-in for the in-app Codex panel
 
 ## Build
 
@@ -128,13 +130,13 @@ brew uninstall --cask --zap nav-center
 
 ## Release
 
-Create a beta DMG with:
+Create an unsigned local test DMG with:
 
 ```sh
-NAV_CENTER_VERSION=0.1.0-beta scripts/package-beta-dmg.sh
+NAV_CENTER_VERSION=0.1.0-beta.1 NAV_CENTER_BUILD=1 scripts/package-beta-dmg.sh --local
 ```
 
-See [docs/RELEASE.md](docs/RELEASE.md) for signing, notarization, and Homebrew cask steps.
+This produces an `-unsigned.dmg` for local testing. The default distribution mode requires a clean source tree, full-history/current-tree secret scans, Developer ID signing, notarization, and Gatekeeper verification. See [docs/RELEASE.md](docs/RELEASE.md) for runner prerequisites, versioning, and architecture-specific Homebrew casks.
 
 ## Safety Model
 
@@ -143,6 +145,18 @@ See [docs/RELEASE.md](docs/RELEASE.md) for signing, notarization, and Homebrew c
 - Mutating package actions require explicit UI confirmation.
 - Codex markdown edits require explicit sign-in and package-markdown edit approval.
 - Generated binaries, PDFs, DOCX files, tracker databases, and local workspaces are ignored by default.
+- Document export supports text, headings, lists, tables and local styling. Active HTML, embedded resources, CSS escapes/comments and resource-loading styles are rejected. Chrome uses a fresh private profile with its own sandbox enabled; unsupported converters fail closed.
+- Cleanup requires the exact displayed preview and preserves package files plus a consistent tracker backup. Confirmed recovery validates the retained manifest and preserves unrelated later tracking changes. Conflicting or changed backup evidence requires manual review.
+- Imports, exports and vault copies validate complete output sets and roll back ordinary write failures. Coordinated filesystem writes are not power-loss atomic, and userspace checks do not prevent every hostile concurrent ancestor rename.
+
+To recover a cleanup, use the manifest reported by that operation:
+
+```sh
+navcenterctl restore-cleanup --workspace /path/to/workspace \
+  --manifest tmp/package-cleanup/<operation>/manifest.json --confirm
+```
+
+Keep the entire operation directory until recovery is complete. Recovery refuses changed or conflicting evidence and never replaces the complete current tracker with an old database.
 
 ## Release Readiness
 

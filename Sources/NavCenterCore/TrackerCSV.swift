@@ -43,21 +43,18 @@ public enum TrackerCSV {
         FROM applications
         ORDER BY date, company, position;
         """
-        let result = try ProcessRunner.run("sqlite3", ["-json", dbPath.path, query], cwd: repoRoot)
-        guard result.status == 0 else { throw NavCenterError.commandFailed(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)) }
-        let data = Data(result.stdout.utf8)
-        let json = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] ?? []
+        let json = try SQLiteSupport.jsonRows(dbPath: dbPath, repoRoot: repoRoot, sql: query)
         return json.map {
             TrackerApplication(
-                date: "\($0["date"] ?? "")",
-                company: "\($0["company"] ?? "")",
-                position: "\($0["position"] ?? "")",
-                applyLink: "\($0["applyLink"] ?? "")",
-                resumeFiles: "\($0["resumeFiles"] ?? "")",
-                coverLetterFiles: "\($0["coverLetterFiles"] ?? "")",
-                status: "\($0["status"] ?? "")",
-                notes: "\($0["notes"] ?? "")",
-                nextActionDate: "\($0["nextActionDate"] ?? "")"
+                date: SQLiteSupport.string($0["date"]),
+                company: SQLiteSupport.string($0["company"]),
+                position: SQLiteSupport.string($0["position"]),
+                applyLink: SQLiteSupport.string($0["applyLink"]),
+                resumeFiles: SQLiteSupport.string($0["resumeFiles"]),
+                coverLetterFiles: SQLiteSupport.string($0["coverLetterFiles"]),
+                status: SQLiteSupport.string($0["status"]),
+                notes: SQLiteSupport.string($0["notes"]),
+                nextActionDate: SQLiteSupport.string($0["nextActionDate"])
             )
         }
     }

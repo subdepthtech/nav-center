@@ -16,57 +16,51 @@ public final class VaultSync {
     }
 
     public func sync(applicationPath: String) throws -> VaultSyncResult {
-        let packageURL = URL(fileURLWithPath: applicationPath, relativeTo: repoRoot).standardizedFileURL
+        let packageURL = (applicationPath.hasPrefix("/") ? URL(fileURLWithPath: applicationPath) : repoRoot.appendingPathComponent(applicationPath)).standardizedFileURL
         let resolved = try PathSafety.resolvePackage(root: repoRoot, packageName: packageURL.lastPathComponent)
+        guard PathSafety.repoRelativePath(root: repoRoot, url: packageURL) == "applications/" + resolved.packageName else {
+            throw NavCenterError.invalidPath("Expected applications/<application> inside the configured workspace.")
+        }
         let vaultValues = try vaultRoot.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
         if vaultValues.isSymbolicLink == true || vaultValues.isDirectory != true {
             throw NavCenterError.invalidPath("Vault project root must be a real directory: \(vaultRoot.path)")
         }
         _ = try PathSafety.realpath(vaultRoot, label: "Vault project root")
         let target = vaultRoot.appendingPathComponent("applications/\(resolved.packageName)", isDirectory: true)
-        var count = 0
+        var prepared: [(URL, Data)] = []
+        var bytes = 0
 
-        count += try copyIfPresent(resolved.packageURL.appendingPathComponent("posting.md"), to: target.appendingPathComponent("posting.md"), sourceRoot: resolved.packageURL)
-        count += try copyIfPresent(resolved.packageURL.appendingPathComponent("ats-report.json"), to: target.appendingPathComponent("ats-report.json"), sourceRoot: resolved.packageURL)
+        try prepareIfPresent(resolved.packageURL.appendingPathComponent("posting.md"), to: target.appendingPathComponent("posting.md"), prepared: &prepared, bytes: &bytes)
+        try prepareIfPresent(resolved.packageURL.appendingPathComponent("ats-report.json"), to: target.appendingPathComponent("ats-report.json"), prepared: &prepared, bytes: &bytes)
         for fileName in try FileManager.default.contentsOfDirectory(atPath: resolved.packageURL.path) {
             let source = resolved.packageURL.appendingPathComponent(fileName)
             let values = try source.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
             if fileName != "posting.md", fileName.hasSuffix(".md"), values.isRegularFile == true, values.isSymbolicLink != true {
-                count += try copyIfPresent(source, to: target.appendingPathComponent(fileName), sourceRoot: resolved.packageURL)
+                try prepareIfPresent(source, to: target.appendingPathComponent(fileName), prepared: &prepared, bytes: &bytes)
             }
         }
-        count += try copyIfPresent(resolved.packageURL.appendingPathComponent("artifacts", isDirectory: true), to: target.appendingPathComponent("artifacts", isDirectory: true), sourceRoot: resolved.packageURL)
+        try prepareIfPresent(resolved.packageURL.appendingPathComponent("artifacts", isDirectory: true), to: target.appendingPathComponent("artifacts", isDirectory: true), prepared: &prepared, bytes: &bytes)
 
-        if count == 0 {
+        if prepared.isEmpty {
             throw NavCenterError.notFound("No package files found to sync in: \(PathSafety.repoRelativePath(root: repoRoot, url: resolved.packageURL))")
         }
-        return VaultSyncResult(applicationName: resolved.packageName, targetURL: target, copiedCount: count)
+        try CoreFileSetCommit.apply(prepared, inside: vaultRoot)
+        return VaultSyncResult(applicationName: resolved.packageName, targetURL: target, copiedCount: prepared.count)
     }
 
-    private func copyIfPresent(_ source: URL, to target: URL, sourceRoot: URL) throws -> Int {
-        guard FileManager.default.fileExists(atPath: source.path) else { return 0 }
-        let values = try source.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey])
-        if values.isSymbolicLink == true { throw NavCenterError.invalidPath("Package source must not be a symlink: \(source.path)") }
+    private func prepareIfPresent(_ source: URL, to target: URL, prepared: inout [(URL, Data)], bytes: inout Int) throws {
+        guard SQLiteSupport.exists(source) else { return }
+        try PathSafety.assertNoSymlinkSegments(source, root: repoRoot, label: "Vault sync source")
+        let values = try source.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
         if values.isDirectory == true {
-            var count = 0
-            for child in try FileManager.default.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) {
-                count += try copyIfPresent(child, to: target.appendingPathComponent(child.lastPathComponent), sourceRoot: sourceRoot)
+            for child in try FileManager.default.contentsOfDirectory(at: source, includingPropertiesForKeys: nil).sorted(by: { $0.path < $1.path }) {
+                try prepareIfPresent(child, to: target.appendingPathComponent(child.lastPathComponent), prepared: &prepared, bytes: &bytes)
             }
-            return count
+            return
         }
-        guard values.isRegularFile == true else { return 0 }
-        try PathSafety.assertWritablePath(target, inside: vaultRoot, label: "Vault sync target")
-        try FileManager.default.copyItemReplacing(source, to: target)
-        return 1
-    }
-}
-
-extension FileManager {
-    func copyItemReplacing(_ source: URL, to target: URL) throws {
-        try createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if fileExists(atPath: target.path) {
-            try removeItem(at: target)
-        }
-        try copyItem(at: source, to: target)
+        guard values.isRegularFile == true else { throw NavCenterError.invalidPath("Vault sync source must be a regular file.") }
+        let data = try PathSafety.readData(source, inside: repoRoot, label: "Vault sync source", maxBytes: 128 * 1024 * 1024 - bytes)
+        bytes += data.count
+        prepared.append((target, data))
     }
 }

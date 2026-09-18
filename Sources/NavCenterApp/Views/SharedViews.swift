@@ -35,13 +35,13 @@ struct HeaderBlock: View {
 
 struct LocalOnlyPill: View {
     var body: some View {
-        Label("Local-only", systemImage: "lock")
+        Label("Local workspace", systemImage: "lock")
             .font(.caption.weight(.semibold))
             .foregroundStyle(.blue)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(.blue.opacity(0.10), in: Capsule())
-            .accessibilityLabel("Local-only private dashboard")
+            .accessibilityLabel("Data stored in your local workspace")
     }
 }
 

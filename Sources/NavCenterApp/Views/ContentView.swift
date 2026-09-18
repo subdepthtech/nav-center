@@ -5,7 +5,6 @@ import NavCenterCore
 struct ContentView: View {
     @EnvironmentObject private var store: DashboardStore
     @State private var selection: DashboardDestination = .overview
-    @State private var dashboardSearch = ""
     @State private var showingCodex = false
 
     var body: some View {
@@ -59,7 +58,7 @@ struct ContentView: View {
                 }
                 .toolbar {
                     ToolbarItemGroup {
-                        TextField("Search dashboard", text: $dashboardSearch)
+                        TextField("Search applications", text: $store.applicationSearch)
                             .textFieldStyle(.roundedBorder)
                             .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
 
@@ -70,6 +69,15 @@ struct ContentView: View {
                         }
                         .help("Refresh local tracker and package data")
                         .disabled(store.isLoading)
+                    }
+                }
+                .safeAreaInset(edge: .top) {
+                    if let warning = store.dataWarningMessage {
+                        Label(warning, systemImage: "exclamationmark.triangle")
+                            .font(.callout)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.orange.opacity(0.12))
                     }
                 }
                 .alert("Dashboard Error", isPresented: errorBinding) {
@@ -85,6 +93,11 @@ struct ContentView: View {
                 .environmentObject(store)
                 .padding(22)
                 .zIndex(1)
+        }
+        .onChange(of: store.applicationSearch) { query in
+            guard !query.isEmpty else { return }
+            store.leavePackageDetailForSidebarNavigation()
+            selection = .applications
         }
     }
 
@@ -109,6 +122,7 @@ struct ContentView: View {
 private struct PackagesWorkspaceView: View {
     @EnvironmentObject private var store: DashboardStore
     @State private var showingCleanupConfirmation = false
+    @State private var cleanupToRemove: PackageCleanupPreview?
 
     private var packagedApplications: [ApplicationRecord] {
         store.applications.filter { !$0.packageName.isEmpty }
@@ -140,8 +154,9 @@ private struct PackagesWorkspaceView: View {
         }
         .background(Color(nsColor: .textBackgroundColor))
         .confirmationDialog("Remove packages older than 7 days?", isPresented: $showingCleanupConfirmation, titleVisibility: .visible) {
-            Button("Remove \(cleanupCandidates.count) Package\(cleanupCandidates.count == 1 ? "" : "s")", role: .destructive) {
-                Task { await store.applyPackageCleanup(olderThanDays: 7, deleteTracked: true) }
+            Button("Remove \(cleanupToRemove?.candidates.count ?? 0) Packages", role: .destructive) {
+                let preview = cleanupToRemove
+                Task { await store.applyPackageCleanup(olderThanDays: 7, deleteTracked: true, confirmedPreview: preview) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -237,6 +252,7 @@ private struct PackagesWorkspaceView: View {
             .help("Preview packages older than 7 days")
 
             Button(role: .destructive) {
+                cleanupToRemove = store.cleanupPreview
                 showingCleanupConfirmation = true
             } label: {
                 Label("Remove", systemImage: "trash")
@@ -350,6 +366,7 @@ private struct JobDescriptionPastePanel: View {
                 .textFieldStyle(.roundedBorder)
 
                 TextEditor(text: $postingText)
+                    .accessibilityLabel("Full job description")
                     .font(.system(.body, design: .monospaced))
                     .frame(minHeight: 220)
                     .scrollContentBackground(.hidden)
@@ -456,7 +473,7 @@ enum MasterResumeEditorLayout {
 
 private struct MasterResumeWorkspaceView: View {
     @EnvironmentObject private var store: DashboardStore
-    @State private var didLoad = false
+    @State private var showingDiscardConfirmation = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -468,7 +485,11 @@ private struct MasterResumeWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack(spacing: 10) {
                                 Button {
-                                    Task { await store.loadMasterResume() }
+                                    if store.hasUnsavedMasterResume {
+                                        showingDiscardConfirmation = true
+                                    } else {
+                                        Task { await store.loadMasterResume() }
+                                    }
                                 } label: {
                                     Label("Reload", systemImage: "arrow.clockwise")
                                 }
@@ -490,7 +511,13 @@ private struct MasterResumeWorkspaceView: View {
                                 }
                             }
 
+                            if store.hasUnsavedMasterResume {
+                                Label("Unsaved changes", systemImage: "pencil.circle")
+                                    .font(.caption)
+                            }
                             TextEditor(text: $store.masterResumeContent)
+                                .accessibilityLabel("Master resume YAML")
+                                .disabled(store.isLoadingMasterResume)
                                 .font(.system(.body, design: .monospaced))
                                 .frame(height: MasterResumeEditorLayout.editorHeight(forViewportHeight: proxy.size.height))
                                 .scrollContentBackground(.hidden)
@@ -512,9 +539,15 @@ private struct MasterResumeWorkspaceView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .textBackgroundColor))
         .task {
-            guard !didLoad else { return }
-            didLoad = true
-            await store.loadMasterResume()
+            if store.masterResumeSnapshot == nil { await store.loadMasterResume() }
+        }
+        .confirmationDialog("Discard unsaved master resume changes?", isPresented: $showingDiscardConfirmation, titleVisibility: .visible) {
+            Button("Discard and Reload", role: .destructive) {
+                Task { await store.loadMasterResume(discardUnsavedChanges: true) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your unsaved edits will be replaced by the saved local master resume. Save your edits first if you want to keep them.")
         }
     }
 }

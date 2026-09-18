@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atsim"
+version = "0.1.0"
+description = "ATS-style resume parser and job-description matcher for the job-hunt workflow."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Austin Tucker" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+atsim = "atsim.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["atsim*"]
+
+[tool.setuptools.package-data]
+"atsim" = ["scripts/*.mjs"]
+
+[tool.pytest.ini_options]
+testpaths = ["atsim/tests"]
+addopts = "-ra"

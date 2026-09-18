@@ -1,7 +1,9 @@
 import Foundation
 import NavCenterCore
 
-final class NativeDashboardService {
+// Configuration is immutable. DashboardStore serializes local operations; Codex
+// operations delegate to NativeCodexBridge, which owns its synchronization.
+final class NativeDashboardService: @unchecked Sendable {
     let repoRoot: URL
 
     private let inspector: PackageInspector
@@ -137,12 +139,13 @@ final class NativeDashboardService {
         return try PackageCleanup(repoRoot: repoRoot, dbPath: trackerDB).preview(olderThanDays: olderThanDays)
     }
 
-    func applyPackageCleanup(olderThanDays: Int = 7, deleteTracked: Bool = true) throws -> PackageCleanupResult {
+    func applyPackageCleanup(olderThanDays: Int = 7, deleteTracked: Bool = true, expectedPreview: PackageCleanupPreview) throws -> PackageCleanupResult {
         try ensureWorkspace()
         return try PackageCleanup(repoRoot: repoRoot, dbPath: trackerDB).apply(
             olderThanDays: olderThanDays,
             deleteTracked: deleteTracked,
-            confirmed: true
+            confirmed: true,
+            expectedPreview: expectedPreview
         )
     }
 
@@ -181,9 +184,9 @@ final class NativeDashboardService {
         return try MasterResumeStore(repoRoot: repoRoot).load()
     }
 
-    func saveMasterResume(content: String) throws -> MasterResumeSaveResult {
+    func saveMasterResume(content: String, expectedContent: String?) throws -> MasterResumeSaveResult {
         try ensureWorkspace()
-        return try MasterResumeStore(repoRoot: repoRoot).save(content: content)
+        return try MasterResumeStore(repoRoot: repoRoot).save(content: content, expectedContent: expectedContent)
     }
 
     func prepareRealtimeInterviewKit(packageName: String, overwrite: Bool = false) throws -> RealtimeInterviewKitResponse {
@@ -211,7 +214,6 @@ final class NativeDashboardService {
     }
 
     func localFileURL(packageName: String, relativePath: String) throws -> URL {
-        try ensureWorkspace()
         let resolved = try PathSafety.resolvePackage(root: repoRoot, packageName: packageName)
         guard !relativePath.contains(".."), !relativePath.hasPrefix("/"), !relativePath.contains("\\") else {
             throw DashboardAPIError.serverUnavailable("Package file path is not allowed: \(relativePath)")
@@ -233,6 +235,10 @@ final class NativeDashboardService {
         try NativeCodexBridge.shared(repoRoot: repoRoot).runPackageChat(payload)
     }
 
+    func cancelCodexTurn() throws {
+        NativeCodexBridge.shared(repoRoot: repoRoot).cancelCurrentTurn()
+    }
+
     private struct LoadedData {
         var applications: [ApplicationRecord]
         var packages: [ApplicationPackage]
@@ -241,10 +247,10 @@ final class NativeDashboardService {
 
     private func loadData() throws -> LoadedData {
         try ensureWorkspace()
-        let corePackages = try inspector.scan()
-        let packages = corePackages.map(Self.convertPackage)
+        let scan = try inspector.scanWithWarnings()
+        let packages = scan.packages.map(Self.convertPackage)
         let packagesByName = Dictionary(uniqueKeysWithValues: packages.map { ($0.name, $0) })
-        let trackerRows = loadTrackerRows()
+        let trackerRows = try loadTrackerRows()
         var applications: [ApplicationRecord] = []
         var usedPackages = Set<String>()
 
@@ -271,7 +277,7 @@ final class NativeDashboardService {
             sources: DashboardSources(
                 tracker: TrackerSource(
                     available: FileManager.default.fileExists(atPath: trackerDB.path),
-                    driver: "sqlite3-cli",
+                    driver: "sqlite3",
                     readOnly: false,
                     queryOnly: false,
                     warnings: []
@@ -279,7 +285,7 @@ final class NativeDashboardService {
                 packages: PackageSource(
                     available: true,
                     scanned: packages.count,
-                    warnings: []
+                    warnings: scan.warnings
                 )
             )
         )
@@ -308,18 +314,18 @@ final class NativeDashboardService {
         var updatedAt: String
     }
 
-    private func loadTrackerRows() -> [TrackerRow] {
+    private func loadTrackerRows() throws -> [TrackerRow] {
         guard FileManager.default.fileExists(atPath: trackerDB.path) else { return [] }
         let query = """
         SELECT id, date, company, position, apply_link AS applyLink, status, notes, next_action_date AS nextActionDate, application_dir AS applicationDir, created_at AS createdAt, updated_at AS updatedAt
         FROM applications
         ORDER BY date DESC, company, position;
         """
-        guard let result = try? ProcessRunner.run("sqlite3", ["-json", trackerDB.path, query], cwd: repoRoot),
-              result.status == 0,
-              let data = result.stdout.data(using: .utf8),
-              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            return []
+        let rows: [[String: Any]]
+        do {
+            rows = try TrackerStore.queryRows(repoRoot: repoRoot, dbPath: trackerDB, sql: query)
+        } catch {
+            throw DashboardAPIError.serverUnavailable("The tracker could not be read. Check that the workspace database is accessible and valid, then refresh. Existing files have been kept.")
         }
         return rows.map {
             TrackerRow(

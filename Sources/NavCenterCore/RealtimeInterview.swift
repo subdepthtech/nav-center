@@ -42,16 +42,16 @@ public final class RealtimeInterviewKitGenerator {
             )
         }
 
-        let shouldWriteTranscript = !FileManager.default.fileExists(atPath: urls.transcript.path)
+        let shouldWriteTranscript = !SQLiteSupport.exists(urls.transcript)
+        if !shouldWriteTranscript { try PathSafety.assertExistingRegularFile(urls.transcript, inside: resolved.packageURL, label: "existing interview transcript") }
         let sessionJSON = try prettyJSON(sessionClientSecretPayload(context: context))
         let transcript = transcriptTemplate(context: context)
         let reviewPrompt = codexReviewPrompt(context: context)
 
-        try write(sessionJSON, to: urls.session, inside: resolved.packageURL)
-        if shouldWriteTranscript {
-            try write(transcript, to: urls.transcript, inside: resolved.packageURL)
-        }
-        try write(reviewPrompt, to: urls.reviewPrompt, inside: resolved.packageURL)
+        var writes: [(URL, Data)] = [(urls.session, Data(sessionJSON.utf8)), (urls.reviewPrompt, Data(reviewPrompt.utf8))]
+        // Existing transcripts are user work, including when overwrite is enabled.
+        if shouldWriteTranscript { writes.append((urls.transcript, Data(transcript.utf8))) }
+        try CoreFileSetCommit.apply(writes, inside: resolved.packageURL, requireAbsent: shouldWriteTranscript ? [urls.transcript.path] : [])
 
         return RealtimeInterviewKitResult(
             sessionConfigURL: urls.session,
@@ -96,7 +96,7 @@ public final class RealtimeInterviewKitGenerator {
     }
 
     private func resolveApplicationPath(_ applicationPath: String) throws -> ResolvedPackage {
-        let packageURL = URL(fileURLWithPath: applicationPath, relativeTo: repoRoot).standardizedFileURL
+        let packageURL = (applicationPath.hasPrefix("/") ? URL(fileURLWithPath: applicationPath) : repoRoot.appendingPathComponent(applicationPath)).standardizedFileURL
         let relative = PathSafety.repoRelativePath(root: repoRoot, url: packageURL)
         guard relative.split(separator: "/").count == 2, relative.hasPrefix("applications/") else {
             throw NavCenterError.invalidPath("Expected an application package directory like applications/<application>: \(applicationPath)")
@@ -293,17 +293,12 @@ public final class RealtimeInterviewKitGenerator {
         let atsURL = packageURL.appendingPathComponent("artifacts/ats-report.json")
         guard FileManager.default.fileExists(atPath: atsURL.path),
               (try? PathSafety.assertExistingRegularFile(atsURL, inside: packageURL, label: "ATS report")) != nil,
-              let data = try? Data(contentsOf: atsURL),
+              let data = try? PathSafety.readData(atsURL, inside: repoRoot, label: "ATS report", maxBytes: 4 * 1024 * 1024),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return "No ATS report found."
         }
-        let score = json["score"] ?? json["overall_score"] ?? (json["summary"] as? [String: Any])?["score"] ?? ""
+        let score = (json["scores"] as? [String: Any])?["overall"] ?? json["score"] ?? json["overall_score"] ?? (json["summary"] as? [String: Any])?["score"] ?? ""
         return "\(score)" == "" ? "ATS report found." : "ATS score \(score)."
-    }
-
-    private func write(_ text: String, to url: URL, inside packageURL: URL) throws {
-        try PathSafety.assertWritablePath(url, inside: packageURL, label: url.lastPathComponent)
-        try text.write(to: url, atomically: true, encoding: .utf8)
     }
 
     private func prettyJSON(_ object: [String: Any]) throws -> String {

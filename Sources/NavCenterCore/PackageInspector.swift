@@ -48,16 +48,24 @@ public final class PackageInspector {
         self.repoRoot = repoRoot
     }
 
-    public func scan() throws -> [ApplicationPackage] {
+    public func scan() throws -> [ApplicationPackage] { try scanWithWarnings().packages }
+
+    public func scanWithWarnings() throws -> PackageScanResult {
         let root = PathSafety.applicationsRoot(repoRoot: repoRoot)
-        guard let entries = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) else {
-            return []
+        try PathSafety.assertNoSymlinkSegments(root, root: repoRoot, label: "applications root")
+        guard SQLiteSupport.exists(root) else { return PackageScanResult(packages: [], warnings: []) }
+        let entries = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        var packages: [ApplicationPackage] = []
+        var warnings: [String] = []
+        for entry in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            do {
+                let values = try entry.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                if values.isSymbolicLink == true { throw NavCenterError.invalidPath("Symbolic link excluded.") }
+                guard values.isDirectory == true else { continue }
+                packages.append(try inspect(packageName: entry.lastPathComponent))
+            } catch { warnings.append("Package \(entry.lastPathComponent) was excluded: \(error.localizedDescription)") }
         }
-        return try entries.sorted { $0.lastPathComponent < $1.lastPathComponent }.compactMap { entry in
-            let values = try entry.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-            guard values.isDirectory == true, values.isSymbolicLink != true else { return nil }
-            return try inspect(packageName: entry.lastPathComponent)
-        }
+        return PackageScanResult(packages: packages, warnings: warnings)
     }
 
     public func inspect(packageName: String) throws -> ApplicationPackage {
@@ -244,4 +252,9 @@ private func buildHealth(_ files: [PackageFile]) -> PackageHealth {
         hasAtsJson: ats.contains { $0.format == "json" },
         previewableCount: files.filter(\.previewable).count
     )
+}
+
+public struct PackageScanResult {
+    public let packages: [ApplicationPackage]
+    public let warnings: [String]
 }

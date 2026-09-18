@@ -11,8 +11,8 @@ struct NavCenterApp: App {
             ContentView()
                 .environmentObject(store)
                 .frame(minWidth: 820, minHeight: 620)
-                .preferredColorScheme(.light)
                 .task {
+                    appDelegate.store = store
                     await store.bootstrap()
                 }
         }
@@ -27,9 +27,33 @@ struct NavCenterApp: App {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    weak var store: DashboardStore?
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let store, store.hasUnsavedMasterResume else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = "Save master resume changes before quitting?"
+        alert.informativeText = "Your unsaved master resume edits will be lost if you quit without saving."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Quit Without Saving")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            Task {
+                await store.saveMasterResume()
+                sender.reply(toApplicationShouldTerminate: !store.hasUnsavedMasterResume)
+            }
+            return .terminateLater
+        case .alertThirdButtonReturn:
+            return .terminateNow
+        default:
+            return .terminateCancel
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.appearance = NSAppearance(named: .aqua)
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }

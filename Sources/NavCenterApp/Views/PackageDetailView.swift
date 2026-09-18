@@ -1,5 +1,6 @@
 import SwiftUI
 import PDFKit
+import AppKit
 
 private enum PackageDetailLayout {
     static let wideLayoutMinimumWidth: CGFloat = 980
@@ -43,6 +44,7 @@ struct PackageDetailView: View {
                         .frame(width: proxy.size.width, height: proxy.size.height)
                 }
             }
+            .onChange(of: payload.package.name) { _ in pendingAction = nil }
         )
     }
 
@@ -273,9 +275,9 @@ private struct ReviewWorkspace: View {
             title: "Resume",
             subtitle: resumeSource?.relativePath ?? resumeHTML?.relativePath ?? "Package file missing",
             mode: $resumeMode,
-            modes: [("pdf", "PDF"), ("markdown", "Markdown")]
+            modes: [("pdf", resumePDF == nil ? "Source Preview" : "PDF"), ("markdown", "Markdown")]
         ) {
-            if resumeMode == "pdf" {
+            if resumeMode == "pdf", resumePDF != nil {
                 RawDocumentPreview(
                     file: resumePDF,
                     openPDFFile: resumePDF,
@@ -283,7 +285,7 @@ private struct ReviewWorkspace: View {
                 )
                     .frame(minHeight: 420, maxHeight: .infinity)
             } else if let resumeSource {
-                FileTextPreview(file: resumeSource, rendered: true, loadOnAppear: true)
+                FileTextPreview(file: resumeSource, rendered: resumeMode == "pdf", loadOnAppear: true)
                     .frame(minHeight: 420, maxHeight: .infinity)
             } else {
                 EmptyStateView(title: "No resume source", message: "No Resume_*.md source file found in this package.")
@@ -299,7 +301,7 @@ private struct ReviewWorkspace: View {
             modes: [("preview", "Preview"), ("markdown", "Markdown")]
         ) {
             if let posting {
-                FileTextPreview(file: posting, rendered: true, loadOnAppear: true)
+                FileTextPreview(file: posting, rendered: postingMode == "preview", loadOnAppear: true)
                     .frame(minHeight: 420, maxHeight: .infinity)
             } else {
                 EmptyStateView(title: "No posting", message: "No posting.md found in this package.")
@@ -412,6 +414,8 @@ private struct PostingWorkspace: View {
 
 private struct InterviewPrepWorkspace: View {
     @EnvironmentObject private var store: DashboardStore
+    @State private var showingReviewConfirmation = false
+    @State private var reviewPackageName: String?
     var packageRecord: ApplicationPackage
     var tab: PackageTab?
 
@@ -432,7 +436,7 @@ private struct InterviewPrepWorkspace: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 12)], alignment: .leading, spacing: 12) {
                 SummaryMetric(title: "Model", value: "gpt-realtime-2", detail: "Realtime interviewer", systemImage: "waveform")
                 SummaryMetric(title: "Session Kit", value: hasKit ? "Ready" : "Missing", detail: "Client secret payload", systemImage: hasKit ? "checkmark.circle" : "circle")
-                SummaryMetric(title: "Transcript", value: hasTranscript ? "Ready" : "Missing", detail: "Review source", systemImage: "doc.text")
+                SummaryMetric(title: "Transcript", value: hasTranscript ? "File present" : "Missing", detail: "Save transcript before review", systemImage: "doc.text")
                 SummaryMetric(title: "Codex Review", value: hasReview ? "Written" : "Pending", detail: "After-action guidance", systemImage: "sparkles")
             }
 
@@ -489,12 +493,23 @@ private struct InterviewPrepWorkspace: View {
             .disabled(store.isPreparingInterviewKit)
 
             Button {
-                Task { await store.reviewRealtimeInterviewWithCodex() }
+                reviewPackageName = packageRecord.name
+                showingReviewConfirmation = true
             } label: {
                 Label("Codex Review", systemImage: "sparkles")
             }
             .buttonStyle(.bordered)
-            .disabled(!hasTranscript || store.isCodexLoading)
+            .disabled(!hasTranscript || store.isCodexLoading || store.codexStatus?.account == nil)
+            .help(store.codexStatus?.account == nil ? "Sign in using the Codex chat panel first." : "Review this transcript with Codex and write interview-review.md after confirmation.")
+        }
+        .confirmationDialog("Allow Codex to review this package and edit markdown?", isPresented: $showingReviewConfirmation, titleVisibility: .visible) {
+            Button("Review and Allow Markdown Edits") {
+                let name = reviewPackageName
+                Task { await store.reviewRealtimeInterviewWithCodex(confirmed: true, packageName: name) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Codex will process the posting, resume, and interview transcript from \(reviewPackageName ?? "this package") using your signed-in account and may update this package's markdown files to produce interview-review.md. Generated artifacts and tracker data are excluded.")
         }
     }
 }
@@ -629,9 +644,11 @@ private struct FileCard: View {
                 }
                 .disabled(store.isFilePreviewLoading(file))
             } else {
-                Text("\(file.format.uppercased()) preview not available")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("Open \(file.format.uppercased())") { openArtifact(reveal: false) }
+                    Button("Reveal in Finder") { openArtifact(reveal: true) }
+                }
+                .accessibilityElement(children: .contain)
             }
 
             if let error = store.filePreviewError(for: file) {
@@ -644,7 +661,7 @@ private struct FileCard: View {
                 ProgressView("Loading preview...")
                     .controlSize(.small)
             } else if let preview = store.filePreview(for: file) {
-                FilePreviewContent(file: file, content: preview.content)
+                FilePreviewContent(file: file, content: preview.content, rendered: file.format.lowercased() == "md")
             } else if file.previewable {
                 Text("Preview is loaded on demand from the local dashboard API.")
                     .font(.caption)
@@ -652,7 +669,7 @@ private struct FileCard: View {
                     .padding(12)
                     .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
             } else {
-                Text("Binary artifacts stay listed but are not fetched or embedded by the client.")
+                Text("Open the package artifact in its default application, or reveal its location in Finder.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(12)
@@ -665,12 +682,26 @@ private struct FileCard: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
         )
-        .task {
+        .task(id: store.previewRevision) {
             if autoLoad {
                 await store.loadFilePreview(file)
             }
         }
     }
+
+    private func openArtifact(reveal: Bool) {
+        do {
+            let url = try store.validatedFileURL(for: file)
+            if reveal {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            } else if !NSWorkspace.shared.open(url) {
+                store.errorMessage = "No application could open this artifact. Use Reveal in Finder to choose an application."
+            }
+        } catch {
+            store.errorMessage = "The artifact could not be opened. Refresh the package and try again. " + error.localizedDescription
+        }
+    }
+
 }
 
 private struct FileTextPreview: View {
@@ -699,7 +730,7 @@ private struct FileTextPreview: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .task {
+        .task(id: store.previewRevision) {
             if loadOnAppear {
                 await store.loadFilePreview(file)
             }
@@ -737,11 +768,11 @@ private struct FilePreviewContent: View {
            let text = String(data: pretty, encoding: .utf8) {
             return text
         }
-        return content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return content
     }
 
     private var shouldRenderMarkdown: Bool {
-        rendered || file.format.lowercased() == "md" || file.relativePath.lowercased().hasSuffix(".md")
+        rendered && (file.format.lowercased() == "md" || file.relativePath.lowercased().hasSuffix(".md"))
     }
 }
 
@@ -864,7 +895,7 @@ private struct RawDocumentPreview: View {
         if let file, let url = store.fileURL(for: file) {
             ZStack(alignment: .bottomTrailing) {
                 if file.format.lowercased() == "pdf" {
-                    PDFDocumentPreview(url: url)
+                    PDFDocumentPreview(url: url, revision: "\(store.previewRevision)-\(file.modifiedAt)-\(file.size)")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color.white)
                 } else {
@@ -888,6 +919,10 @@ private struct RawDocumentPreview: View {
 
 private struct PDFDocumentPreview: NSViewRepresentable {
     var url: URL
+    var revision: String
+
+    final class Coordinator { var loadedRevision: String? }
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> PDFView {
         let view = PDFView()
@@ -898,8 +933,9 @@ private struct PDFDocumentPreview: NSViewRepresentable {
     }
 
     func updateNSView(_ pdfView: PDFView, context: Context) {
-        if pdfView.document?.documentURL != url {
+        if pdfView.document?.documentURL != url || context.coordinator.loadedRevision != revision {
             pdfView.document = PDFDocument(url: url)
+            context.coordinator.loadedRevision = revision
         }
     }
 }
@@ -1043,7 +1079,8 @@ private struct PackageRailContent: View {
                             Button(pendingAction.title) {
                                 let actionKey = pendingAction.rawValue
                                 self.pendingAction = nil
-                                Task { await store.runConfirmedAction(actionKey) }
+                                let name = packageRecord.name
+                                Task { await store.runConfirmedAction(actionKey, packageName: name) }
                             }
                             .buttonStyle(.borderedProminent)
 

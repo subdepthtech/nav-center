@@ -2,8 +2,23 @@
 set -euo pipefail
 
 MODE="${1:-run}"
+case "$MODE" in
+  run|build|--debug|debug|--logs|logs|--verify|verify) ;;
+  *) echo "usage: $0 [run|build|--debug|--logs|--verify]" >&2; exit 2 ;;
+esac
+[[ $# -le 1 ]] || { echo "Expected at most one mode." >&2; exit 2; }
+
+VERSION="${NAV_CENTER_VERSION:-0.1.0-beta}"
+BUILD_NUMBER="${NAV_CENTER_BUILD:-1}"
+CONFIGURATION="${NAV_CENTER_BUILD_CONFIGURATION:-debug}"
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9]+([.-][A-Za-z0-9]+)*)?$ ]] || { echo "Invalid NAV_CENTER_VERSION." >&2; exit 2; }
+[[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "NAV_CENTER_BUILD must be a positive integer." >&2; exit 2; }
+[[ "$CONFIGURATION" == debug || "$CONFIGURATION" == release ]] || { echo "Build configuration must be debug or release." >&2; exit 2; }
+if [[ "$MODE" == --verify || "$MODE" == verify ]]; then
+  : "${NAV_CENTER_WORKSPACE_ROOT:?Verification requires an explicit disposable NAV_CENTER_WORKSPACE_ROOT}"
+fi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DIST_DIR="$ROOT_DIR/dist"
+DIST_DIR="${NAV_CENTER_DIST_DIR:-$ROOT_DIR/dist}"
 BUNDLE_NAME="Nav Center"
 EXECUTABLE_NAME="NavCenterApp"
 CTL_NAME="navcenterctl"
@@ -21,6 +36,7 @@ INFO_PLIST="$APP_CONTENTS/Info.plist"
 ICON_FILE="$APP_RESOURCES/$ICON_NAME.icns"
 WORKSPACE_ROOT="${NAV_CENTER_WORKSPACE_ROOT:-$ROOT_DIR}"
 INCLUDE_WORKSPACE_ENV="${NAV_CENTER_INCLUDE_WORKSPACE_ENV:-0}"
+if [[ "$MODE" == --verify || "$MODE" == verify ]]; then INCLUDE_WORKSPACE_ENV=1; fi
 
 for required_tool in sips iconutil; do
   if ! command -v "$required_tool" >/dev/null 2>&1; then
@@ -28,11 +44,6 @@ for required_tool in sips iconutil; do
     exit 1
   fi
 done
-
-stop_existing() {
-  pkill -f "$APP_BINARY" >/dev/null 2>&1 || true
-  pkill -x "$EXECUTABLE_NAME" >/dev/null 2>&1 || true
-}
 
 stage_icon() {
   if [[ ! -f "$ICON_SOURCE" ]]; then
@@ -60,12 +71,12 @@ stage_icon() {
 }
 
 stage_app() {
-  swift build --package-path "$ROOT_DIR" --product "$EXECUTABLE_NAME"
-  swift build --package-path "$ROOT_DIR" --product "$CTL_NAME"
+  swift build --package-path "$ROOT_DIR" -c "$CONFIGURATION" --product "$EXECUTABLE_NAME"
+  swift build --package-path "$ROOT_DIR" -c "$CONFIGURATION" --product "$CTL_NAME"
   local build_binary
-  build_binary="$(swift build --package-path "$ROOT_DIR" --show-bin-path)/$EXECUTABLE_NAME"
+  build_binary="$(swift build --package-path "$ROOT_DIR" -c "$CONFIGURATION" --show-bin-path)/$EXECUTABLE_NAME"
   local ctl_build_binary
-  ctl_build_binary="$(swift build --package-path "$ROOT_DIR" --show-bin-path)/$CTL_NAME"
+  ctl_build_binary="$(swift build --package-path "$ROOT_DIR" -c "$CONFIGURATION" --show-bin-path)/$CTL_NAME"
 
   rm -rf "$APP_BUNDLE"
   mkdir -p "$APP_MACOS" "$APP_RESOURCES"
@@ -77,10 +88,12 @@ stage_app() {
 
   local env_plist=""
   if [[ "$INCLUDE_WORKSPACE_ENV" == "1" ]]; then
+    local escaped_workspace
+    escaped_workspace="$(printf '%s' "$WORKSPACE_ROOT" | sed -e 's/\&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"
     env_plist="  <key>LSEnvironment</key>
   <dict>
     <key>NAV_CENTER_WORKSPACE_ROOT</key>
-    <string>$WORKSPACE_ROOT</string>
+    <string>$escaped_workspace</string>
   </dict>"
   fi
 
@@ -101,6 +114,12 @@ stage_app() {
   <string>$ICON_NAME</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>${VERSION%%-*}</string>
+  <key>CFBundleVersion</key>
+  <string>$BUILD_NUMBER</string>
+  <key>NavCenterVersion</key>
+  <string>$VERSION</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>NSPrincipalClass</key>
@@ -109,13 +128,13 @@ $env_plist
 </dict>
 </plist>
 PLIST
+  plutil -lint "$INFO_PLIST"
 }
 
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"
 }
 
-stop_existing
 stage_app
 
 case "$MODE" in
@@ -137,9 +156,5 @@ case "$MODE" in
     ;;
   build)
     echo "$BUNDLE_NAME built at $APP_BUNDLE"
-    ;;
-  *)
-    echo "usage: $0 [run|build|--debug|--logs|--verify]" >&2
-    exit 2
     ;;
 esac

@@ -12,16 +12,28 @@ permissions:
 
 jobs:
   swift:
-    name: Swift build and test
+    name: Build, test and release contracts
     runs-on: macos-14
-    timeout-minutes: 20
-
+    timeout-minutes: 40
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Test
-        run: swift test
-
-      - name: Build
-        run: swift build
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Source and release script checks
+        run: |
+          git diff --check
+          for script in scripts/*.sh; do bash -n "$script"; done
+          python3 -B -m unittest discover -s scripts/tests -v
+      - name: Test with coverage
+        run: swift test --enable-code-coverage
+      - name: Debug and release builds
+        run: |
+          swift build
+          swift build -c release
+      - name: CLI behavior
+        run: NAVCENTERCTL="$(swift build --show-bin-path)/navcenterctl" python3 -B scripts/tests/test_cli.py -v
+      - name: Address sanitizer
+        run: swift test --scratch-path "$RUNNER_TEMP/nav-center-asan" --sanitize=address
+      - name: Thread sanitizer
+        run: swift test --scratch-path "$RUNNER_TEMP/nav-center-tsan" --sanitize=thread

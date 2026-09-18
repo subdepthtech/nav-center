@@ -13,6 +13,7 @@ struct NavCenterCLI {
     }
 
     private static func run(_ arguments: [String]) throws {
+        try ArgumentParser.validate(arguments)
         var parser = ArgumentParser(arguments)
         guard let command = parser.next() else {
             printUsage()
@@ -50,6 +51,12 @@ struct NavCenterCLI {
             let redact = parser.flag("--redact")
             let report = FeedbackDiagnostics(workspaceRoot: workspace).report(redact: redact)
             try writeJSON(report)
+        case "restore-cleanup":
+            let path = try parser.requiredOption("--manifest")
+            let manifest = path.hasPrefix("/") ? URL(fileURLWithPath: path) : workspace.appendingPathComponent(path)
+            let result = try PackageCleanup(repoRoot: workspace).restore(manifestURL: manifest, confirmed: parser.flag("--confirm"))
+            print("Restored \(result.preview.candidates.count) package(s).")
+            for warning in result.warnings { print("Warning: \(warning)") }
         case "create-package":
             let company = try parser.requiredOption("--company")
             let role = try parser.requiredOption("--role")
@@ -94,6 +101,7 @@ struct NavCenterCLI {
             navcenterctl create-package --company <name> --role <title> --posting <path> [--date YYYY-MM-DD] [--overwrite] [--dry-run] [--workspace <path>]
             navcenterctl export-artifacts --source <markdown> [--source <markdown>] [--workspace <path>]
             navcenterctl feedback-diagnostics [--redact] [--workspace <path>]
+            navcenterctl restore-cleanup --manifest <path> --confirm [--workspace <path>]
             """
         )
     }
@@ -105,6 +113,42 @@ private struct ArgumentParser {
 
     init(_ arguments: [String]) {
         self.arguments = arguments
+    }
+
+    // Validate the entire invocation before resolving a workspace or performing any IO.
+    static func validate(_ arguments: [String]) throws {
+        guard let command = arguments.first else { return }
+        let specifications: [String: (values: Set<String>, flags: Set<String>, repeated: Set<String>)] = [
+            "init-workspace": (["--workspace"], [], []),
+            "doctor": (["--workspace"], ["--json"], []),
+            "import-docs": (["--workspace", "--file"], [], ["--file"]),
+            "feedback-diagnostics": (["--workspace"], ["--redact"], []),
+            "restore-cleanup": (["--workspace", "--manifest"], ["--confirm"], []),
+            "create-package": (["--workspace", "--company", "--role", "--posting", "--date"], ["--dry-run", "--overwrite"], []),
+            "export-artifacts": (["--workspace", "--source"], [], ["--source"]),
+            "help": ([], [], []), "--help": ([], [], []), "-h": ([], [], [])
+        ]
+        guard let spec = specifications[command] else {
+            throw NavCenterError.invalidPath("Unknown command: \(command)")
+        }
+        var index = 1
+        var seen = Set<String>()
+        while index < arguments.count {
+            let name = arguments[index]
+            guard spec.values.contains(name) || spec.flags.contains(name) else {
+                throw NavCenterError.invalidPath("Unexpected argument: \(name)")
+            }
+            guard seen.insert(name).inserted || spec.repeated.contains(name) else {
+                throw NavCenterError.invalidPath("Duplicate option: \(name)")
+            }
+            if spec.values.contains(name) {
+                guard index + 1 < arguments.count, !arguments[index + 1].isEmpty,
+                      !arguments[index + 1].hasPrefix("--") else {
+                    throw NavCenterError.invalidPath("Missing value for \(name)")
+                }
+                index += 2
+            } else { index += 1 }
+        }
     }
 
     mutating func next() -> String? {

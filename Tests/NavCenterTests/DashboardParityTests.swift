@@ -159,9 +159,10 @@ final class DashboardParityTests: XCTestCase {
         try? await store.refreshAll()
         XCTAssertEqual(store.summary?.totals.packages, 59)
 
+        await store.previewPackageCleanup(olderThanDays: 7)
         await store.applyPackageCleanup(olderThanDays: 7, deleteTracked: true)
 
-        XCTAssertEqual(store.cleanupPreview?.candidates.count, 0)
+        XCTAssertNil(store.cleanupPreview)
         XCTAssertEqual(store.summary?.totals.packages, 16)
         XCTAssertEqual(store.summary?.packageHealth.withPosting, 9)
         XCTAssertEqual(service.events, ["apply", "preview", "summary", "applications"])
@@ -201,10 +202,10 @@ final class DashboardParityTests: XCTestCase {
             checks.map(\.label),
             [
                 "Posting captured",
-                "Resume drafted",
-                "PDF generated",
-                "DOCX generated",
-                "Extraction OK",
+                "Resume source present",
+                "PDF present",
+                "DOCX present",
+                "Extraction file present",
                 "ATS available",
                 "Interview prep"
             ]
@@ -241,7 +242,7 @@ final class DashboardParityTests: XCTestCase {
     }
 }
 
-private final class IntakeDashboardService: DashboardServicing {
+private final class IntakeDashboardService: DashboardServicing, @unchecked Sendable {
     let repoRoot = URL(fileURLWithPath: "/tmp/nav-center-intake-test")
     var createdRequests: [JobDescriptionIntakeRequest] = []
     var savedMasterResumeContent = ""
@@ -265,7 +266,7 @@ private final class IntakeDashboardService: DashboardServicing {
         )
     }
 
-    func saveMasterResume(content: String) throws -> MasterResumeSaveResult {
+    func saveMasterResume(content: String, expectedContent: String?) throws -> MasterResumeSaveResult {
         savedMasterResumeContent = content
         return MasterResumeSaveResult(
             relativePath: "master-resumes/master_primary.yaml",
@@ -365,7 +366,7 @@ private final class IntakeDashboardService: DashboardServicing {
         throw DashboardAPIError.serverUnavailable("not used")
     }
 
-    func applyPackageCleanup(olderThanDays: Int, deleteTracked: Bool) throws -> PackageCleanupResult {
+    func applyPackageCleanup(olderThanDays: Int, deleteTracked: Bool, expectedPreview: PackageCleanupPreview) throws -> PackageCleanupResult {
         throw DashboardAPIError.serverUnavailable("not used")
     }
 
@@ -422,7 +423,7 @@ private final class IntakeDashboardService: DashboardServicing {
     }
 }
 
-private final class CleanupRefreshService: DashboardServicing {
+private final class CleanupRefreshService: DashboardServicing, @unchecked Sendable {
     let repoRoot = URL(fileURLWithPath: "/tmp/nav-center-test")
     var events: [String] = []
     private var cleanupApplied = false
@@ -458,7 +459,7 @@ private final class CleanupRefreshService: DashboardServicing {
         )
     }
 
-    func applyPackageCleanup(olderThanDays: Int, deleteTracked: Bool) throws -> PackageCleanupResult {
+    func applyPackageCleanup(olderThanDays: Int, deleteTracked: Bool, expectedPreview: PackageCleanupPreview) throws -> PackageCleanupResult {
         events.removeAll()
         events.append("apply")
         cleanupApplied = true
@@ -497,7 +498,7 @@ private final class CleanupRefreshService: DashboardServicing {
         throw DashboardAPIError.serverUnavailable("not used")
     }
 
-    func saveMasterResume(content: String) throws -> MasterResumeSaveResult {
+    func saveMasterResume(content: String, expectedContent: String?) throws -> MasterResumeSaveResult {
         throw DashboardAPIError.serverUnavailable("not used")
     }
 

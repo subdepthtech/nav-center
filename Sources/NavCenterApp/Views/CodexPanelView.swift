@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct CodexChatLauncher: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var store: DashboardStore
     @Binding var isPresented: Bool
 
@@ -14,7 +15,7 @@ struct CodexChatLauncher: View {
             }
 
             Button {
-                withAnimation(.spring(response: 0.24, dampingFraction: 0.84)) {
+                withAnimation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.84)) {
                     isPresented.toggle()
                 }
             } label: {
@@ -40,13 +41,15 @@ struct CodexChatLauncher: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(isPresented ? "Close Codex chat" : "Open Codex chat")
             .help(isPresented ? "Close Codex chat" : "Open Codex chat")
         }
-        .animation(.spring(response: 0.24, dampingFraction: 0.84), value: isPresented)
+        .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.84), value: isPresented)
     }
 }
 
 struct CodexPanelView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var store: DashboardStore
     @Binding var isPresented: Bool
     @State private var prompt = ""
@@ -114,6 +117,10 @@ struct CodexPanelView: View {
         .task {
             await store.refreshCodexStatus()
         }
+        .onChange(of: store.selectedPackage?.package.name) { _ in
+            confirmedEdits = false
+            allowEdits = false
+        }
     }
 
     private var header: some View {
@@ -145,10 +152,11 @@ struct CodexPanelView: View {
             }
             .buttonStyle(.borderless)
             .disabled(store.isCodexLoading)
+            .accessibilityLabel("Refresh Codex account")
             .help("Refresh Codex account")
 
             Button {
-                withAnimation(.spring(response: 0.24, dampingFraction: 0.84)) {
+                withAnimation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.84)) {
                     isPresented = false
                 }
             } label: {
@@ -157,6 +165,7 @@ struct CodexPanelView: View {
             }
             .buttonStyle(.borderless)
             .keyboardShortcut(.cancelAction)
+            .accessibilityLabel("Close Codex chat")
             .help("Close Codex chat")
         }
         .padding(.horizontal, 16)
@@ -250,6 +259,7 @@ struct CodexPanelView: View {
             }
 
             TextEditor(text: $prompt)
+                .accessibilityLabel("Message to Codex")
                 .font(.body)
                 .frame(height: 76)
                 .padding(4)
@@ -278,10 +288,11 @@ struct CodexPanelView: View {
                     let message = prompt
                     let editsAllowed = allowEdits
                     let editsConfirmed = confirmedEdits
+                    let packageName = store.selectedPackage?.package.name
                     prompt = ""
                     confirmedEdits = false
                     Task {
-                        await store.sendCodexMessage(message, allowEdits: editsAllowed, confirmed: editsConfirmed)
+                        await store.sendCodexMessage(message, allowEdits: editsAllowed, confirmed: editsConfirmed, packageName: packageName)
                     }
                 } label: {
                     Label(store.isCodexLoading ? "Sending" : "Send", systemImage: "paperplane.fill")
@@ -290,9 +301,20 @@ struct CodexPanelView: View {
                 .disabled(!canSend)
             }
 
+            Text("Codex processes messages and package content using your signed-in account.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             if store.isCodexLoading {
-                ProgressView()
-                    .controlSize(.small)
+                HStack {
+                    ProgressView().controlSize(.small)
+                    if store.isCodexTurnRunning {
+                        Button(store.isCancellingCodex ? "Stopping…" : "Stop") {
+                            Task { await store.cancelCodexTurn() }
+                        }
+                        .disabled(store.isCancellingCodex)
+                        .accessibilityLabel("Stop the current Codex turn")
+                    }
+                }
             }
         }
         .padding(14)
@@ -322,7 +344,7 @@ struct CodexPanelView: View {
     private func scrollToLatest(_ proxy: ScrollViewProxy) {
         guard let id = store.codexMessages.last?.id else { return }
         DispatchQueue.main.async {
-            withAnimation(.easeOut(duration: 0.18)) {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
                 proxy.scrollTo(id, anchor: .bottom)
             }
         }

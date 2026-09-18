@@ -598,11 +598,11 @@ struct PackageHealthCheck: Identifiable, Hashable {
     static func items(for package: ApplicationPackage) -> [PackageHealthCheck] {
         [
             PackageHealthCheck(label: "Posting captured", isPassing: package.health.hasPosting),
-            PackageHealthCheck(label: "Resume drafted", isPassing: package.health.hasResumeSource),
-            PackageHealthCheck(label: "PDF generated", isPassing: package.files.contains { $0.format.lowercased() == "pdf" }),
-            PackageHealthCheck(label: "DOCX generated", isPassing: package.files.contains { $0.format.lowercased() == "docx" }),
+            PackageHealthCheck(label: "Resume source present", isPassing: package.health.hasResumeSource),
+            PackageHealthCheck(label: "PDF present", isPassing: package.files.contains { $0.format.lowercased() == "pdf" }),
+            PackageHealthCheck(label: "DOCX present", isPassing: package.files.contains { $0.format.lowercased() == "docx" }),
             PackageHealthCheck(
-                label: "Extraction OK",
+                label: "Extraction file present",
                 isPassing: package.files.contains {
                     $0.relativePath.lowercased().hasSuffix(".pdf.txt")
                         || $0.relativePath.lowercased().hasSuffix(".docx.txt")
