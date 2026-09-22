@@ -62,6 +62,7 @@ public final class PackageCleanup {
     private let dbPath: URL
     // Internal fault injection for deterministic persistence-boundary tests.
     var beforeManifestWrite: ((String, URL) throws -> Void)?
+    var beforeTrackerRowRemoval: (() throws -> Void)?
 
     public init(repoRoot: URL, dbPath: URL? = nil) {
         self.repoRoot = repoRoot
@@ -121,6 +122,10 @@ public final class PackageCleanup {
         let databaseExisted = SQLiteSupport.exists(dbPath)
         let connection = databaseExisted ? try SQLiteSupport.Connection(dbPath: dbPath, repoRoot: repoRoot, writable: true) : nil
         try connection?.validateSchema()
+        let trackedCleanup = databaseExisted && current.candidates.contains(where: \.isTracked)
+        if trackedCleanup, let connection {
+            try assertNoCustomTriggers(connection, before: "row removal")
+        }
         let evidence = try prepareEvidenceDirectory()
         let lease = try lockEvidenceDirectory(evidence)
         defer { _ = flock(lease, LOCK_UN); close(lease) }
@@ -135,6 +140,9 @@ public final class PackageCleanup {
         try writeManifest(manifest, to: manifestURL)
         var moved: [PackageCleanupCandidate] = []
         let operation = {
+            if trackedCleanup, let connection {
+                try self.assertNoCustomTriggers(connection, before: "row removal")
+            }
             guard try self.preview(olderThanDays: olderThanDays, today: today) == expectedPreview else {
                 throw NavCenterError.invalidPath("Cleanup preview changed before removal. Preview the packages again.")
             }
@@ -154,6 +162,9 @@ public final class PackageCleanup {
                 }
                 try PathSafety.moveItem(source, to: packagesBackup.appendingPathComponent(candidate.packageName), inside: self.repoRoot, label: "recoverable package cleanup")
                 moved.append(candidate)
+            }
+            if let beforeTrackerRowRemoval = self.beforeTrackerRowRemoval {
+                try beforeTrackerRowRemoval()
             }
             if let connection { try self.removeTrackerRows(current.candidates.compactMap(\.trackerID), connection: connection) }
         }
@@ -285,10 +296,7 @@ public final class PackageCleanup {
                 // User-defined triggers could change unrelated records despite
                 // these narrow INSERT statements. Do not guess their effects.
                 if !insertions.isEmpty {
-                    let triggers = try connection.rows("select name from sqlite_master where type = 'trigger' and tbl_name in ('applications', 'status_events', 'artifacts');")
-                    guard triggers.isEmpty else {
-                        throw NavCenterError.invalidPath("Tracker has custom triggers. Review them before automatic row restoration; existing records were preserved.")
-                    }
+                    try self.assertNoCustomTriggers(connection, before: "row restoration")
                 }
                 // Validate every affected record before inserting any of them.
                 for statement in insertions { try connection.execute(statement) }
@@ -386,6 +394,13 @@ public final class PackageCleanup {
             rowsByPackage[parts[1]] = row
         }
         return rowsByPackage
+    }
+
+    private func assertNoCustomTriggers(_ connection: SQLiteSupport.Connection, before operation: String) throws {
+        let triggers = try connection.rows("select name from sqlite_master where type = 'trigger' and tbl_name in ('applications', 'status_events', 'artifacts');")
+        guard triggers.isEmpty else {
+            throw NavCenterError.invalidPath("Tracker has custom triggers. Review them before automatic \(operation); existing records were preserved.")
+        }
     }
 
     private func removeTrackerRows(_ ids: [String], connection: SQLiteSupport.Connection) throws {

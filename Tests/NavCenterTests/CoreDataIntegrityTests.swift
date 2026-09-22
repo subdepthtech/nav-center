@@ -235,11 +235,50 @@ final class CoreDataIntegrityTests: XCTestCase {
         let other = "2020-02-01_Other_Engineer"
         try makePackage(other)
         _ = try status(packageName: other)
-        try SQLiteSupport.run(dbPath: database, repoRoot: root, sql: "CREATE TRIGGER refuse_delete BEFORE DELETE ON applications BEGIN SELECT RAISE(ABORT, 'fixture delete failure'); END;")
-        XCTAssertThrowsError(try cleanup())
+        let cleaner = PackageCleanup(repoRoot: root)
+        cleaner.beforeTrackerRowRemoval = { throw NavCenterError.commandFailed("fixture delete failure") }
+        let preview = try cleaner.preview(olderThanDays: 7, today: "2026-09-04")
+        XCTAssertThrowsError(try cleaner.apply(olderThanDays: 7, today: preview.today, deleteTracked: true, confirmed: true, expectedPreview: preview))
         XCTAssertTrue(SQLiteSupport.exists(package.appendingPathComponent("posting.md")))
         XCTAssertTrue(SQLiteSupport.exists(root.appendingPathComponent("applications/" + other + "/posting.md")))
         XCTAssertEqual(try TrackerStore(repoRoot: root).loadRows().count, 2)
+    }
+
+    func testCleanupRefusesTrackerWithCustomTriggersBeforeWritingEvidenceOrMovingPackages() throws {
+        _ = try status()
+        try SQLiteSupport.run(dbPath: database, repoRoot: root, sql: "CREATE TRIGGER refuse_cleanup BEFORE DELETE ON status_events BEGIN SELECT RAISE(ABORT, 'fixture'); END;")
+        XCTAssertThrowsError(try cleanup()) { error in
+            XCTAssertTrue(error.localizedDescription.contains("row removal"), error.localizedDescription)
+        }
+        XCTAssertTrue(SQLiteSupport.exists(package.appendingPathComponent("posting.md")))
+        XCTAssertEqual(try TrackerStore(repoRoot: root).loadRows().count, 1)
+        let evidence = root.appendingPathComponent("tmp/package-cleanup")
+        if FileManager.default.fileExists(atPath: evidence.path) {
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: evidence.path), [])
+        }
+    }
+
+    func testCleanupWithoutTrackedCandidatesIgnoresTriggers() throws {
+        let recent = "2026-09-01_Recent_Engineer"
+        try makePackage(recent)
+        _ = try status(packageName: recent)
+        try SQLiteSupport.run(dbPath: database, repoRoot: root, sql: "CREATE TRIGGER ignore_cleanup BEFORE DELETE ON applications BEGIN SELECT RAISE(ABORT, 'should not run'); END;")
+        let result = try cleanup()
+        XCTAssertEqual(result.removedPackages.map(\.packageName), [packageName])
+        XCTAssertFalse(SQLiteSupport.exists(package))
+        XCTAssertTrue(SQLiteSupport.exists(root.appendingPathComponent("applications/" + recent + "/posting.md")))
+        XCTAssertEqual(try TrackerStore(repoRoot: root).loadRows().map(\.applicationDir), ["applications/" + recent])
+    }
+
+    func testRestoreStillRefusesCustomTriggersWithUnchangedMessage() throws {
+        _ = try status()
+        let result = try cleanup()
+        try SQLiteSupport.run(dbPath: database, repoRoot: root, sql: "CREATE TRIGGER block_restore BEFORE INSERT ON applications BEGIN SELECT RAISE(ABORT, 'fixture'); END;")
+        XCTAssertThrowsError(try PackageCleanup(repoRoot: root).restore(manifestURL: result.manifestURL, confirmed: true)) { error in
+            XCTAssertEqual(error.localizedDescription, "Tracker has custom triggers. Review them before automatic row restoration; existing records were preserved.")
+        }
+        XCTAssertFalse(SQLiteSupport.exists(package))
+        XCTAssertTrue(try TrackerStore(repoRoot: root).loadRows().isEmpty)
     }
 
     func testCleanupRestoreRoundTripPreservesEveryPackageFileAndOtherTracking() throws {
