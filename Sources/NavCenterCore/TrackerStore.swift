@@ -31,6 +31,13 @@ public struct TrackerStatusUpdateResult: Equatable, Codable {
     public var warnings: [String] = []
 }
 
+public struct TrackerStatusEvent: Equatable, Codable {
+    public let applicationID: String
+    public let oldStatus: String
+    public let newStatus: String
+    public let changedAt: String
+}
+
 public struct TrackerApplicationRow: Equatable, Codable {
     public let id: String
     public let date: String
@@ -133,6 +140,24 @@ public final class TrackerStore {
                 notes: SQLiteSupport.string(row["notes"]),
                 nextActionDate: SQLiteSupport.string(row["nextActionDate"]),
                 applicationDir: SQLiteSupport.string(row["applicationDir"])
+            )
+        }
+    }
+
+    public func statusEvents(applicationID: String, limit: Int) throws -> [TrackerStatusEvent] {
+        guard SQLiteSupport.exists(dbPath) else { return [] }
+        let boundedLimit = min(max(limit, 0), 200)
+        let sql = """
+        select application_id as applicationID, old_status as oldStatus, new_status as newStatus, changed_at as changedAt
+        from status_events where application_id = \(SQLiteSupport.quote(applicationID))
+        order by changed_at desc, rowid desc limit \(boundedLimit);
+        """
+        return try SQLiteSupport.jsonRows(dbPath: dbPath, repoRoot: repoRoot, sql: sql).map { row in
+            TrackerStatusEvent(
+                applicationID: SQLiteSupport.string(row["applicationID"]),
+                oldStatus: SQLiteSupport.string(row["oldStatus"]),
+                newStatus: SQLiteSupport.string(row["newStatus"]),
+                changedAt: SQLiteSupport.string(row["changedAt"])
             )
         }
     }

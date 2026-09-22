@@ -1,5 +1,6 @@
 import XCTest
 import Darwin
+import SQLite3
 import struct NavCenterCore.CreateApplicationResult
 import struct NavCenterCore.MasterResumeSaveResult
 import struct NavCenterCore.MasterResumeSnapshot
@@ -377,6 +378,51 @@ final class UXReadinessTests: XCTestCase {
 
         let update = try service.updatePackageStatus(packageName: name, status: .interview)
         XCTAssertEqual(update.newStatus, "Interview")
+    }
+
+    func testStatusHistoryListsEventsNewestFirstAfterStatusChange() throws {
+        let root = try workspace()
+        _ = try WorkspaceManager(workspaceRoot: root).initialize()
+        let service = NativeDashboardService(repoRoot: root)
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+        _ = try service.updatePackageStatus(packageName: name, status: .submitted)
+        _ = try service.updatePackageStatus(packageName: name, status: .interview)
+        let events = try service.fetchPackage(named: name).statusEvents
+        XCTAssertEqual(events.count, 2)
+        XCTAssertEqual(events.map(\.newStatus), ["Interview", "Submitted"])
+        XCTAssertEqual(events.map(\.oldStatus), ["Submitted", ""])
+    }
+
+    func testStatusHistoryReadFailureIsShownInsteadOfEmptyHistory() throws {
+        let root = try workspace()
+        _ = try WorkspaceManager(workspaceRoot: root).initialize()
+        let service = NativeDashboardService(repoRoot: root)
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+        _ = try service.updatePackageStatus(packageName: name, status: .submitted)
+
+        var database: OpaquePointer?
+        let databasePath = root.appendingPathComponent("tracking/applications.sqlite").path
+        XCTAssertEqual(sqlite3_open_v2(databasePath, &database, SQLITE_OPEN_READWRITE, nil), SQLITE_OK)
+        guard let database else { return XCTFail("Could not open disposable tracker") }
+        defer { sqlite3_close(database) }
+        XCTAssertEqual(sqlite3_exec(database, "DROP TABLE status_events;", nil, nil, nil), SQLITE_OK)
+
+        let response = try service.fetchPackage(named: name)
+        XCTAssertEqual(response.statusHistoryError, "Status history could not be read. Package details are still available.")
+        XCTAssertTrue(response.statusEvents.isEmpty)
+        XCTAssertEqual(response.application?.status, "Submitted")
+        XCTAssertTrue(response.sources.tracker.warnings.contains(response.statusHistoryError ?? ""))
+    }
+
+    @MainActor
+    func testImportFailureSurfacesAsError() async {
+        let store = DashboardStore(service: UXTestService())
+        store.onboardingMessage = "Earlier import succeeded"
+        await store.importSourceDocuments([URL(fileURLWithPath: "/tmp/synthetic-import.txt")])
+        XCTAssertNotNil(store.errorMessage)
+        XCTAssertNil(store.onboardingMessage)
     }
 
     func testMissingTrackerIsNormalPackageOnlyViewWithoutWarning() throws {

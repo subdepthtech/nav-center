@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ApplicationsView: View {
     @EnvironmentObject private var store: DashboardStore
@@ -6,6 +7,8 @@ struct ApplicationsView: View {
     @State private var locationFilter = ApplicationsFilterDefaults.location
     @State private var sourceFilter = ApplicationsFilterDefaults.source
     @State private var currentPage = 0
+    @State private var statusBanner: String?
+    @State private var statusBannerDismissal: Task<Void, Never>?
 
     private let rowsPerPage = 12
 
@@ -66,10 +69,59 @@ struct ApplicationsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(nsColor: .textBackgroundColor))
+        .overlay(alignment: .top) {
+            statusConfirmationBanner
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
         .onChange(of: store.applicationSearch) { _ in resetPage() }
         .onChange(of: statusFilter) { _ in resetPage() }
         .onChange(of: locationFilter) { _ in resetPage() }
         .onChange(of: sourceFilter) { _ in resetPage() }
+        .onChange(of: store.statusMessage) { message in
+            statusBannerDismissal?.cancel()
+            statusBanner = message
+            guard let message else { return }
+            NSAccessibility.post(
+                element: NSApp as Any,
+                notification: .announcementRequested,
+                userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.high.rawValue]
+            )
+            statusBannerDismissal = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                guard !Task.isCancelled else { return }
+                statusBanner = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var statusConfirmationBanner: some View {
+        if let statusBanner {
+            HStack {
+                Text(statusBanner)
+                Spacer()
+                Button {
+                    statusBannerDismissal?.cancel()
+                    self.statusBanner = nil
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .accessibilityLabel("Dismiss status message")
+            }
+            .padding(12)
+            .background {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: .windowBackgroundColor))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
+                    }
+                    .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Status update: \(statusBanner)")
+        }
     }
 
     private var filterBar: some View {
