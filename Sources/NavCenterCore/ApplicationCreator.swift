@@ -170,7 +170,10 @@ public final class ApplicationCreator {
                 try PathSafety.assertExistingRegularFile(url, inside: repoRoot, label: "Payload file")
                 data = try PathSafety.readData(url, inside: repoRoot, label: "Payload file", maxBytes: 4_194_304)
             } else {
-                data = try PathSafety.readData(url, inside: url.deletingLastPathComponent(), label: "Payload file", maxBytes: 4_194_304)
+                // Resolve only the payload parent; the leaf must still pass the no-follow read.
+                let sourceParent = try PathSafety.realpath(url.deletingLastPathComponent(), label: "source document parent")
+                let sourceFile = sourceParent.appendingPathComponent(url.lastPathComponent)
+                data = try PathSafety.readData(sourceFile, inside: sourceParent, label: "Payload file", maxBytes: 4_194_304)
             }
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
             return Source(

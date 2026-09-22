@@ -83,4 +83,82 @@ final class CreatorReadinessTests: XCTestCase {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: applications.path)) ?? []
         XCTAssertTrue(names.isEmpty, names.joined(separator: ", "))
     }
+
+    func testPayloadOutsideWorkspaceUnderSymlinkedTemporaryDirectoryIsRead() throws {
+        let root = try fixture()
+        let outside = try outsidePayloadDirectory()
+        let payloadURL = outside.appendingPathComponent("payload.json")
+        try validPayloadData().write(to: payloadURL)
+        let creator = ApplicationCreator(repoRoot: root)
+
+        let result = try creator.create(options: options(.payload(payloadURL.path)))
+        let posting = try String(contentsOf: result.postingURL)
+        XCTAssertTrue(posting.contains("Synthetic Café"))
+        XCTAssertTrue(posting.contains("source_type: \"payload\""))
+        XCTAssertTrue(posting.contains("Synthetic Payload Title"))
+        XCTAssertTrue(posting.contains("https://example.test/jobs/synthetic"))
+        XCTAssertTrue(posting.contains("synthetic-board"))
+        XCTAssertTrue(posting.contains("job-42"))
+        XCTAssertTrue(posting.contains("Remote"))
+        XCTAssertTrue(posting.contains("100000"))
+        XCTAssertTrue(posting.contains("captures/synthetic.json"))
+        XCTAssertTrue(posting.contains("Experience building synthetic systems"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: result.packageURL.appendingPathComponent("Resume_" + result.packageName + ".md").path))
+    }
+
+    func testOversizedPayloadOutsideWorkspaceIsRejected() throws {
+        let root = try fixture()
+        let outside = try outsidePayloadDirectory()
+        try Data(count: 4_194_305).write(to: outside.appendingPathComponent("payload.json"))
+        let creator = ApplicationCreator(repoRoot: root)
+
+        XCTAssertThrowsError(try creator.create(options: options(.payload(outside.appendingPathComponent("payload.json").path)))) { error in
+            XCTAssertTrue(error.localizedDescription.contains("4194304"), error.localizedDescription)
+        }
+        let applications = root.appendingPathComponent("applications")
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: applications.path)) ?? []
+        XCTAssertTrue(names.isEmpty, names.joined(separator: ", "))
+    }
+
+    func testSymlinkedPayloadFileOutsideWorkspaceIsRefused() throws {
+        let root = try fixture()
+        let outside = try outsidePayloadDirectory()
+        let real = outside.appendingPathComponent("real-payload.json")
+        try validPayloadData().write(to: real)
+        let link = outside.appendingPathComponent("payload.json")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        let creator = ApplicationCreator(repoRoot: root)
+
+        XCTAssertThrowsError(try creator.create(options: options(.payload(link.path)))) { error in
+            XCTAssertTrue(error.localizedDescription.contains("symbolic link"), error.localizedDescription)
+        }
+        let applications = root.appendingPathComponent("applications")
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: applications.path)) ?? []
+        XCTAssertTrue(names.isEmpty, names.joined(separator: ", "))
+    }
+
+    private func outsidePayloadDirectory() throws -> URL {
+        let outside = FileManager.default.temporaryDirectory.appendingPathComponent("navcenter-payload-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: outside) }
+        return outside
+    }
+
+    private func validPayloadData() throws -> Data {
+        let description = "Responsibilities and requirements. " + String(repeating: "Experience building synthetic systems. ", count: 30)
+        let object: [String: String] = [
+            "title": "Synthetic Payload Title",
+            "url": "https://example.test/jobs/synthetic",
+            "source": "synthetic-board",
+            "id": "job-42",
+            "location": "Remote",
+            "salary": "100000",
+            "posted_date": "2026-09-01",
+            "job_type": "full-time",
+            "work_settings": "remote",
+            "source_path": "captures/synthetic.json",
+            "description": description
+        ]
+        return try JSONSerialization.data(withJSONObject: object)
+    }
 }

@@ -1,6 +1,7 @@
 import SwiftUI
 import PDFKit
 import AppKit
+import NavCenterCore
 
 private enum PackageDetailLayout {
     static let wideLayoutMinimumWidth: CGFloat = 980
@@ -921,7 +922,10 @@ private struct PDFDocumentPreview: NSViewRepresentable {
     var url: URL
     var revision: String
 
-    final class Coordinator { var loadedRevision: String? }
+    final class Coordinator {
+        var loadedURL: URL?
+        var loadedRevision: String?
+    }
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> PDFView {
@@ -933,8 +937,15 @@ private struct PDFDocumentPreview: NSViewRepresentable {
     }
 
     func updateNSView(_ pdfView: PDFView, context: Context) {
-        if pdfView.document?.documentURL != url || context.coordinator.loadedRevision != revision {
-            pdfView.document = PDFDocument(url: url)
+        if context.coordinator.loadedURL != url || context.coordinator.loadedRevision != revision {
+            do {
+                let sourceParent = try PathSafety.realpath(url.deletingLastPathComponent(), label: "PDF preview")
+                let data = try PathSafety.readData(url, inside: sourceParent, label: "PDF preview", maxBytes: 64 * 1024 * 1024)
+                pdfView.document = PDFDocument(data: data)
+            } catch {
+                pdfView.document = nil
+            }
+            context.coordinator.loadedURL = url
             context.coordinator.loadedRevision = revision
         }
     }
