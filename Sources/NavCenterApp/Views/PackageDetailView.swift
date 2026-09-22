@@ -1078,9 +1078,9 @@ private struct PackageRailContent: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(pendingAction.confirmationTitle)
                             .font(.headline)
-                        Text(pendingAction.message)
+                        Text(pendingAction.message(tools: store.toolAvailability))
                             .foregroundStyle(.secondary)
-                        if let command = pendingAction.commandPreview(packageName: packageRecord.name) {
+                        if let command = pendingAction.commandPreview(packageName: packageRecord.name, tools: store.toolAvailability) {
                             Text(command)
                                 .font(.caption.monospaced())
                                 .textSelection(.enabled)
@@ -1213,7 +1213,7 @@ enum PackageAction: String, Identifiable {
         case .atsScan:
             return (true, nil)
         case .syncToVault:
-            return (false, message)
+            return (false, message(tools: tools))
         case .exportArtifacts:
             guard let tools, !tools.tools.isEmpty else { return (true, nil) }
             guard let exportTool = tools.tools.first(where: { $0.tool == .exportTool }) else { return (true, nil) }
@@ -1246,23 +1246,29 @@ enum PackageAction: String, Identifiable {
         self == .atsScan
     }
 
-    var message: String {
+    func message(tools: ToolAvailabilityReport?) -> String {
         switch self {
         case .atsScan:
             return "Runs a local package scan and refreshes the package ATS report."
         case .exportArtifacts:
+            if tools?.tools.first(where: { $0.tool == .exportTool })?.state == .found {
+                return "Runs the exporter set in NAV_CENTER_EXPORT_BIN on this package's resume. Nav Center validates the refreshed PDF; the exporter must honor NAV_CENTER_SKIP_VAULT_SYNC=1."
+            }
             return "Exports this package's resume to HTML, DOCX, PDF, and text extractions in artifacts/ using Pandoc, Google Chrome, and pdftotext. Vault sync is skipped."
         case .syncToVault:
             return "Reserved for a later confirmed vault sync workflow."
         }
     }
 
-    func commandPreview(packageName: String) -> String? {
+    func commandPreview(packageName: String, tools: ToolAvailabilityReport?) -> String? {
         switch self {
         case .atsScan:
             let packagePath = "applications/\(packageName)"
             return "atsim scan \(packagePath) --out \(packagePath)/artifacts/ats-report.json"
         case .exportArtifacts:
+            if tools?.tools.first(where: { $0.tool == .exportTool })?.state == .found {
+                return "NAV_CENTER_SKIP_VAULT_SYNC=1 $NAV_CENTER_EXPORT_BIN export applications/\(packageName)/Resume_\(packageName).md"
+            }
             return "NAV_CENTER_SKIP_VAULT_SYNC=1 native-export export applications/\(packageName)/Resume_\(packageName).md"
         case .syncToVault:
             return nil

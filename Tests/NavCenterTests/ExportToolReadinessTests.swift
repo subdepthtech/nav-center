@@ -7,7 +7,10 @@ final class ExportToolReadinessTests: XCTestCase {
         guard ProcessInfo.processInfo.environment["NAV_CENTER_TEST_REAL_EXPORT"] == "1" else {
             throw XCTSkip("Set NAV_CENTER_TEST_REAL_EXPORT=1 for the installed export-chain integration check.")
         }
-        let configuration = ToolProbeConfiguration()
+        var environment = ProcessInfo.processInfo.environment
+        environment.removeValue(forKey: "NAV_CENTER_VAULT_DIR")
+        environment["NAV_CENTER_SKIP_VAULT_SYNC"] = "1"
+        let configuration = ToolProbeConfiguration(environment: environment)
         var missing: [String] = []
         for tool in [ExternalTool.pandoc, .pdftotext, .chrome] {
             let status = ToolProbe.resolve(tool, configuration: configuration)
@@ -22,6 +25,7 @@ final class ExportToolReadinessTests: XCTestCase {
 
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("nav-center-export-readiness-" + UUID().uuidString, isDirectory: true)
+            .resolvingSymlinksInPath()
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         _ = try WorkspaceManager(workspaceRoot: root).initialize()
@@ -41,7 +45,8 @@ final class ExportToolReadinessTests: XCTestCase {
         """
         try Data(source.utf8).write(to: packageURL.appendingPathComponent("Resume_\(packageName).md"))
 
-        _ = try ArtifactExporter(repoRoot: root).export(markdownPaths: ["applications/\(packageName)/Resume_\(packageName).md"])
+        _ = try ArtifactExporter(repoRoot: root, environment: environment, toolProbe: configuration)
+            .export(markdownPaths: ["applications/\(packageName)/Resume_\(packageName).md"])
 
         let artifacts = packageURL.appendingPathComponent("artifacts")
         let html = artifacts.appendingPathComponent("Resume_\(packageName).html")

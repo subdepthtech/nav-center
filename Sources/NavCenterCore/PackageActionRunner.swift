@@ -93,7 +93,7 @@ public final class PackageActionRunner {
                     entry.stderrTail = tail(result.stderr)
                 }
                 entry.status = result.status == 0 ? "succeeded" : "failed"
-                entry.message = actionMessage(action: action, status: entry.status, exitCode: result.status)
+                entry.message = actionMessage(action: action, status: entry.status, exitCode: result.status, executable: command.executable)
             } else {
                 try ensureArtifactsDirectory(resolved.packageURL)
                 let outputURL = repoRoot.appendingPathComponent(command.outputPath)
@@ -124,7 +124,7 @@ public final class PackageActionRunner {
                     guard output.starts(with: Data("%PDF-".utf8)) else { throw NavCenterError.commandFailed("Resume output is not a PDF.") }
                 }
                 entry.status = result.status == 0 ? "succeeded" : "failed"
-                entry.message = actionMessage(action: action, status: entry.status, exitCode: result.status)
+                entry.message = actionMessage(action: action, status: entry.status, exitCode: result.status, executable: command.executable)
             }
         } catch {
             entry.status = "failed"
@@ -337,7 +337,7 @@ public final class PackageActionRunner {
         switch actionKey.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().replacingOccurrences(of: "_", with: "-") {
         case "ats", "ats-scan", "run-ats-scan":
             return "ats-scan"
-        case "refresh-resume", "resume-refresh", "refresh-pdf", "export-artifacts", "export":
+        case "refresh-resume", "resume-refresh", "refresh-pdf", "export-artifacts":
             return "refresh-resume"
         default:
             throw NavCenterError.invalidPath("Package action is not supported: \(actionKey)")
@@ -377,9 +377,14 @@ public final class PackageActionRunner {
         }
     }
 
-    private func actionMessage(action: String, status: String, exitCode: Int32) -> String {
+    private func actionMessage(action: String, status: String, exitCode: Int32, executable: String) -> String {
         if status == "succeeded" {
-            return action == "refresh-resume" ? "Resume artifacts exported: HTML, DOCX, PDF, and text extractions." : "ATS scan completed and ats-report.json was refreshed."
+            if action == "refresh-resume" {
+                return executable == "native-export"
+                    ? "Resume artifacts exported: HTML, DOCX, PDF, and text extractions."
+                    : "Resume PDF refreshed by the exporter set in NAV_CENTER_EXPORT_BIN."
+            }
+            return "ATS scan completed and ats-report.json was refreshed."
         }
         if exitCode == 127 {
             let tool: ExternalTool = action == "refresh-resume" ? .exportTool : .atsim

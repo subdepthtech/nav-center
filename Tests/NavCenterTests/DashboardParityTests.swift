@@ -35,24 +35,34 @@ final class DashboardParityTests: XCTestCase {
         XCTAssertEqual(actions.map { $0.availability(.empty).enabled }, [true, true, false])
         XCTAssertEqual(actions.first?.confirmationTitle, "Confirm ATS Scan")
         XCTAssertEqual(
-            actions.first?.message,
+            actions.first?.message(tools: nil),
             "Runs a local package scan and refreshes the package ATS report."
         )
         XCTAssertEqual(
-            actions.first?.commandPreview(packageName: "2026-05-05_Example_Security_Engineer"),
+            actions.first?.commandPreview(packageName: "2026-05-05_Example_Security_Engineer", tools: nil),
             "atsim scan applications/2026-05-05_Example_Security_Engineer --out applications/2026-05-05_Example_Security_Engineer/artifacts/ats-report.json"
         )
         XCTAssertEqual(actions[1].confirmationTitle, "Confirm Export")
         XCTAssertEqual(
-            actions[1].message,
+            actions[1].message(tools: nil),
             "Exports this package's resume to HTML, DOCX, PDF, and text extractions in artifacts/ using Pandoc, Google Chrome, and pdftotext. Vault sync is skipped."
         )
         XCTAssertEqual(
-            actions[1].commandPreview(packageName: "2026-05-05_Example_Security_Engineer"),
+            actions[1].commandPreview(packageName: "2026-05-05_Example_Security_Engineer", tools: .empty),
             "NAV_CENTER_SKIP_VAULT_SYNC=1 native-export export applications/2026-05-05_Example_Security_Engineer/Resume_2026-05-05_Example_Security_Engineer.md"
         )
-        XCTAssertEqual(actions[2].message, "Reserved for a later confirmed vault sync workflow.")
-        XCTAssertNil(actions[2].commandPreview(packageName: "2026-05-05_Example_Security_Engineer"))
+        XCTAssertEqual(actions[2].message(tools: nil), "Reserved for a later confirmed vault sync workflow.")
+        XCTAssertNil(actions[2].commandPreview(packageName: "2026-05-05_Example_Security_Engineer", tools: nil))
+
+        let external = ToolAvailabilityReport(tools: [toolStatus(.exportTool, .found)])
+        XCTAssertEqual(
+            actions[1].message(tools: external),
+            "Runs the exporter set in NAV_CENTER_EXPORT_BIN on this package's resume. Nav Center validates the refreshed PDF; the exporter must honor NAV_CENTER_SKIP_VAULT_SYNC=1."
+        )
+        XCTAssertEqual(
+            actions[1].commandPreview(packageName: "2026-05-05_Example_Security_Engineer", tools: external),
+            "NAV_CENTER_SKIP_VAULT_SYNC=1 $NAV_CENTER_EXPORT_BIN export applications/2026-05-05_Example_Security_Engineer/Resume_2026-05-05_Example_Security_Engineer.md"
+        )
     }
 
     func testExportRailIsDisabledWithReasonWhenExportToolsMissing() {
@@ -65,6 +75,18 @@ final class DashboardParityTests: XCTestCase {
         let missing = PackageAction.exportArtifacts.availability(missingChrome)
         XCTAssertFalse(missing.enabled)
         XCTAssertEqual(missing.reason, "Export needs Pandoc, pdftotext, and Google Chrome. See Settings > External Tools.")
+
+        for absent in [ExternalTool.pandoc, .pdftotext] {
+            let report = ToolAvailabilityReport(tools: [
+                toolStatus(.exportTool, .builtIn),
+                toolStatus(.pandoc, absent == .pandoc ? .missing : .found),
+                toolStatus(.pdftotext, absent == .pdftotext ? .missing : .found),
+                toolStatus(.chrome, .found)
+            ])
+            let availability = PackageAction.exportArtifacts.availability(report)
+            XCTAssertFalse(availability.enabled, absent.displayName)
+            XCTAssertEqual(availability.reason, "Export needs Pandoc, pdftotext, and Google Chrome. See Settings > External Tools.", absent.displayName)
+        }
 
         let invalidExtractor = ToolAvailabilityReport(tools: [
             toolStatus(.pandoc, .found),

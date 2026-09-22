@@ -97,6 +97,7 @@ NAVCENTERCTL="$(xcrun swift build --show-bin-path --scratch-path "$nav_build_roo
 ```
 
 The Swift test resolves Pandoc, pdftotext, and Chrome with the default probe, exports one synthetic resume, and requires `Resume_*.html`, `.docx`, `.pdf`, `.docx.txt`, and `.pdf.txt`, with a PDF header and non-empty text extractions. The `test_cli.py` real lane runs `export-artifacts` with no tool overrides and the same five-file check, with a 120 second timeout. See [`ExportToolReadinessTests`](../Tests/NavCenterTests/ExportToolReadinessTests.swift).
+Both real-export lanes remove `NAV_CENTER_VAULT_DIR` and set `NAV_CENTER_SKIP_VAULT_SYNC=1`, so a configured vault is never written.
 
 For a separately reviewed, installed ATS executable, substitute its absolute path:
 
