@@ -28,8 +28,12 @@ if name == "spctl": event += ":" + args[args.index("-t") + 1]
 if name == "codesign": event += ":verify" if "--verify" in args else ":sign"
 if name == "gitleaks": event += ":" + args[0]
 if name == "git": event += ":status" if "status" in args else ":rev-parse"
+payload = {"tool": name, "args": args, "event": event}
+if name == "hdiutil" and args[:1] == ["create"] and "-srcfolder" in args:
+    source = pathlib.Path(args[args.index("-srcfolder") + 1])
+    payload["srcfolder"] = sorted(child.name for child in source.iterdir())
 with open(os.environ["RELEASE_TRACE"], "a") as stream:
-    stream.write(json.dumps({"tool": name, "args": args, "event": event}) + "\n")
+    stream.write(json.dumps(payload) + "\n")
 if os.environ.get("FAIL_EVENT") == event: sys.exit(9)
 if name == "git" and "--is-shallow-repository" in args: print(os.environ.get("RELEASE_SHALLOW", "false"))
 if name == "git" and "status" in args and os.environ.get("RELEASE_DIRTY"): print(" M synthetic.swift")
@@ -157,6 +161,8 @@ class ReleaseScriptsTests(unittest.TestCase):
         (self.root / "scripts").mkdir()
         (self.root / "Resources").mkdir()
         (self.root / "Resources/AppIcon.png").write_bytes(b"synthetic icon source")
+        (self.root / "LICENSE").write_text("Synthetic Nav Center license.\n")
+        (self.root / "THIRD_PARTY_NOTICES.md").write_text("Synthetic third-party notices.\n")
         for script in (REPO / "scripts").glob("*.sh"):
             shutil.copy2(script, self.root / "scripts" / script.name)
         self.bin = self.root / "built"
@@ -408,6 +414,124 @@ class ReleaseScriptsTests(unittest.TestCase):
         self.assertIn("if-no-files-found: error", reports)
         self.assertIn("${{ runner.temp }}/nav-center-current-secrets.json", reports)
         self.assertIn("${{ runner.temp }}/nav-center-history-secrets.json", reports)
+
+    def test_build_stages_license_and_notices_into_resources(self):
+        self.assert_ok(self.run_script("build-and-run.sh", "build"))
+        resources = self.dist / "Nav Center.app/Contents/Resources"
+        self.assertEqual((resources / "LICENSE").read_text(), (self.root / "LICENSE").read_text())
+        self.assertEqual((resources / "THIRD_PARTY_NOTICES.md").read_text(), (self.root / "THIRD_PARTY_NOTICES.md").read_text())
+
+    def test_build_fails_before_swift_when_license_or_notices_missing(self):
+        for name in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
+            with self.subTest(name=name):
+                target = self.root / name
+                backup = target.read_text()
+                target.unlink()
+                result = self.run_script("build-and-run.sh", "build")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(name, result.stderr)
+                self.assertEqual(self.events(), [])
+                target.write_text(backup)
+                self.trace.unlink(missing_ok=True)
+
+    def test_local_package_places_license_and_notices_beside_app_in_image(self):
+        notices = self.root / "THIRD_PARTY_NOTICES.md"
+        notices.write_text(notices.read_text() + "License text: PENDING UPSTREAM CONFIRMATION\n")
+        self.assert_ok(self.run_script("package-beta-dmg.sh", "--local"))
+        created = [event for event in self.events() if event["tool"] == "hdiutil" and event["args"][0] == "create"]
+        self.assertEqual(len(created), 1)
+        for name in ("Nav Center.app", "Applications", "LICENSE", "THIRD_PARTY_NOTICES.md"):
+            self.assertIn(name, created[0]["srcfolder"])
+
+    def test_distribution_refuses_pending_notice_placeholder(self):
+        (self.root / "THIRD_PARTY_NOTICES.md").write_text("License text: PENDING UPSTREAM CONFIRMATION\n")
+        result = self.run_script("package-beta-dmg.sh", "--distribution", extra=self.credentials())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("PENDING UPSTREAM CONFIRMATION", result.stderr)
+        self.assertFalse(any(event["tool"] in ("swift", "codesign", "xcrun", "hdiutil") for event in self.events()))
+
+
+class VendorNoticeTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="nav-center-vendor-notice-tests-")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+
+    def write_snapshot(self, commit):
+        vendor = self.root / "vendor/atsim"
+        vendor.mkdir(parents=True)
+        payload = b"synthetic snapshot\n"
+        (vendor / "snapshot.txt").write_bytes(payload)
+        manifest = {"snapshot.txt": hashlib.sha256(payload).hexdigest()}
+        (vendor / "UPSTREAM-SHA256.json").write_text(json.dumps(manifest) + "\n")
+        (vendor / "UPSTREAM.md").write_text(
+            "- Repository: https://github.com/austinkennethtucker/cli\n"
+            "- Source directory: `atsim/`\n"
+            f"- Commit: `{commit}`\n"
+            "- Copied: 2026-09-15\n"
+            "- Package version: 0.1.0\n"
+        )
+        scripts = self.root / "scripts"
+        scripts.mkdir(exist_ok=True)
+        shutil.copy2(REPO / "scripts/verify-vendor.py", scripts / "verify-vendor.py")
+
+    def run_verify(self, root=None):
+        script_root = self.root if root is None else root
+        return subprocess.run(
+            [sys.executable, "-B", str(script_root / "scripts/verify-vendor.py")],
+            cwd=script_root, capture_output=True, text=True,
+        )
+
+    def test_notices_reference_snapshot_commit_and_path(self):
+        real = subprocess.run(
+            [sys.executable, "-B", str(REPO / "scripts/verify-vendor.py")],
+            cwd=REPO, capture_output=True, text=True,
+        )
+        self.assertEqual(real.returncode, 0, real.stderr + real.stdout)
+        upstream = (REPO / "vendor/atsim/UPSTREAM.md").read_text()
+        commit = re.search(r"(?m)^- Commit: `([0-9a-f]{40})`", upstream).group(1)
+        notices = (REPO / "THIRD_PARTY_NOTICES.md").read_text()
+        self.assertIn("vendor/atsim", notices)
+        self.assertIn(commit, notices)
+        self.assertNotIn("Copyright", notices.split("## @opencode-ai/sdk", 1)[0].split("## atsim", 1)[1])
+
+        synthetic_commit = "0123456789abcdef0123456789abcdef01234567"
+        self.write_snapshot(synthetic_commit)
+        notice_path = self.root / "THIRD_PARTY_NOTICES.md"
+        notice_path.write_text(f"vendor/atsim\n{synthetic_commit}\n")
+        accepted = self.run_verify()
+        self.assertEqual(accepted.returncode, 0, accepted.stderr + accepted.stdout)
+
+        notice_path.write_text(f"{synthetic_commit}\n")
+        missing_path = self.run_verify()
+        self.assertNotEqual(missing_path.returncode, 0)
+        self.assertIn("vendor/atsim", missing_path.stderr)
+
+        notice_path.write_text("vendor/atsim\n")
+        missing_commit = self.run_verify()
+        self.assertNotEqual(missing_commit.returncode, 0)
+        self.assertIn("upstream commit", missing_commit.stderr)
+
+        notice_path.unlink()
+        missing_file = self.run_verify()
+        self.assertNotEqual(missing_file.returncode, 0)
+        self.assertIn("THIRD_PARTY_NOTICES.md", missing_file.stderr)
+
+    def test_verify_vendor_reports_pending_confirmation_without_failing(self):
+        commit = "0123456789abcdef0123456789abcdef01234567"
+        self.write_snapshot(commit)
+        notices = self.root / "THIRD_PARTY_NOTICES.md"
+        pending_line = "atsim notice is pending upstream confirmation and remains a distribution gate."
+        notices.write_text(f"vendor/atsim\n{commit}\nLicense text: PENDING UPSTREAM CONFIRMATION\n")
+        pending = self.run_verify()
+        self.assertEqual(pending.returncode, 0, pending.stderr + pending.stdout)
+        self.assertIn(pending_line, pending.stdout)
+
+        notices.write_text(f"vendor/atsim\n{commit}\n")
+        confirmed = self.run_verify()
+        self.assertEqual(confirmed.returncode, 0, confirmed.stderr + confirmed.stdout)
+        self.assertNotIn(pending_line, confirmed.stdout)
+        self.assertNotIn("pending upstream confirmation", confirmed.stdout)
 
 
 if __name__ == "__main__":

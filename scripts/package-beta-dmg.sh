@@ -36,6 +36,11 @@ for output in "$DMG_PATH" "$DMG_PATH.sha256" "$DMG_PATH.notary.json"; do
   [[ ! -e "$output" && ! -L "$output" ]] || { echo "Refusing to overwrite release output: $output" >&2; exit 1; }
 done
 
+if [[ "$MODE" == --distribution ]] && grep -q "PENDING UPSTREAM CONFIRMATION" "$ROOT_DIR/THIRD_PARTY_NOTICES.md"; then
+  echo "Refusing distribution build: THIRD_PARTY_NOTICES.md contains PENDING UPSTREAM CONFIRMATION." >&2
+  exit 1
+fi
+
 NAV_CENTER_VERSION="$VERSION" NAV_CENTER_BUILD="$BUILD_NUMBER" NAV_CENTER_BUILD_CONFIGURATION=release \
   NAV_CENTER_INCLUDE_WORKSPACE_ENV=0 "$ROOT_DIR/scripts/build-and-run.sh" build
 
@@ -43,6 +48,8 @@ STAGING_DIR="$(mktemp -d "$DIST_DIR/.dmg-stage.XXXXXX")"
 trap 'rm -rf "$STAGING_DIR"' EXIT
 cp -R "$APP_BUNDLE" "$STAGING_DIR/"
 ln -s /Applications "$STAGING_DIR/Applications"
+cp "$ROOT_DIR/LICENSE" "$STAGING_DIR/LICENSE"
+cp "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$STAGING_DIR/THIRD_PARTY_NOTICES.md"
 STAGED_APP="$STAGING_DIR/Nav Center.app"
 for binary in NavCenterApp navcenterctl; do
   [[ "$(lipo -archs "$STAGED_APP/Contents/MacOS/$binary")" == "$ARCH" ]] || { echo "Unexpected binary architecture: $binary" >&2; exit 1; }

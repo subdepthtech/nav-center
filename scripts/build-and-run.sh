@@ -71,6 +71,15 @@ stage_icon() {
 }
 
 stage_app() {
+  if [[ ! -f "$ROOT_DIR/LICENSE" ]]; then
+    echo "missing LICENSE: $ROOT_DIR/LICENSE" >&2
+    exit 1
+  fi
+  if [[ ! -f "$ROOT_DIR/THIRD_PARTY_NOTICES.md" ]]; then
+    echo "missing THIRD_PARTY_NOTICES.md: $ROOT_DIR/THIRD_PARTY_NOTICES.md" >&2
+    exit 1
+  fi
+
   swift build --package-path "$ROOT_DIR" -c "$CONFIGURATION" --product "$EXECUTABLE_NAME"
   swift build --package-path "$ROOT_DIR" -c "$CONFIGURATION" --product "$CTL_NAME"
   local build_binary
@@ -84,6 +93,8 @@ stage_app() {
   cp "$ctl_build_binary" "$CTL_BINARY"
   chmod +x "$APP_BINARY"
   chmod +x "$CTL_BINARY"
+  cp "$ROOT_DIR/LICENSE" "$APP_RESOURCES/LICENSE"
+  cp "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$APP_RESOURCES/THIRD_PARTY_NOTICES.md"
   stage_icon
 
   local env_plist=""
