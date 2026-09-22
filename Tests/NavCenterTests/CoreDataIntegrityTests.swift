@@ -281,6 +281,64 @@ final class CoreDataIntegrityTests: XCTestCase {
         XCTAssertTrue(try TrackerStore(repoRoot: root).loadRows().isEmpty)
     }
 
+    func testCleanupRefusesMixedCaseTriggerNames() throws {
+        let statements = [
+            "CREATE TRIGGER audit AFTER DELETE ON Applications BEGIN SELECT 1; END;",
+            "CREATE TRIGGER audit AFTER DELETE ON \"STATUS_EVENTS\" BEGIN SELECT 1; END;",
+        ]
+        for sql in statements {
+            for suffix in ["", "-wal", "-shm", "-journal"] {
+                let file = URL(fileURLWithPath: database.path + suffix)
+                if FileManager.default.fileExists(atPath: file.path) {
+                    try FileManager.default.removeItem(at: file)
+                }
+            }
+            _ = try status()
+            try SQLiteSupport.run(dbPath: database, repoRoot: root, sql: sql)
+            let rows = try TrackerStore(repoRoot: root).loadRows()
+            XCTAssertThrowsError(try cleanup()) { error in
+                XCTAssertTrue(error.localizedDescription.contains("row removal"), error.localizedDescription)
+            }
+            XCTAssertTrue(SQLiteSupport.exists(package))
+            XCTAssertEqual(try TrackerStore(repoRoot: root).loadRows(), rows)
+        }
+    }
+
+    func testRestoreRefusesMixedCaseInsertTrigger() throws {
+        _ = try status()
+        let result = try cleanup()
+        try SQLiteSupport.run(dbPath: database, repoRoot: root, sql: "CREATE TRIGGER audit AFTER INSERT ON Applications BEGIN SELECT 1; END;")
+        XCTAssertThrowsError(try PackageCleanup(repoRoot: root).restore(manifestURL: result.manifestURL, confirmed: true)) { error in
+            XCTAssertEqual(error.localizedDescription, "Tracker has custom triggers. Review them before automatic row restoration; existing records were preserved.")
+        }
+        XCTAssertFalse(SQLiteSupport.exists(package))
+        XCTAssertTrue(try TrackerStore(repoRoot: root).loadRows().isEmpty)
+    }
+
+    func testCleanupRechecksTriggersInsideTransaction() throws {
+        _ = try status()
+        let other = "2020-02-01_Other_Engineer"
+        try makePackage(other)
+        _ = try status(packageName: other)
+        let cleaner = PackageCleanup(repoRoot: root)
+        var preparedWrites = 0
+        cleaner.beforeManifestWrite = { state, _ in
+            guard state == "prepared" else { return }
+            preparedWrites += 1
+            guard preparedWrites == 1 else { return }
+            try SQLiteSupport.run(dbPath: self.database, repoRoot: self.root, sql: "CREATE TRIGGER audit AFTER DELETE ON applications BEGIN SELECT 1; END;")
+        }
+        let preview = try cleaner.preview(olderThanDays: 7, today: "2026-09-04")
+        let rows = try TrackerStore(repoRoot: root).loadRows()
+        XCTAssertThrowsError(try cleaner.apply(olderThanDays: 7, today: preview.today, deleteTracked: true, confirmed: true, expectedPreview: preview)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("row removal"), error.localizedDescription)
+        }
+        for candidate in preview.candidates {
+            XCTAssertTrue(SQLiteSupport.exists(root.appendingPathComponent("applications/" + candidate.packageName)))
+        }
+        XCTAssertEqual(try TrackerStore(repoRoot: root).loadRows(), rows)
+    }
+
     func testCleanupRestoreRoundTripPreservesEveryPackageFileAndOtherTracking() throws {
         _ = try status()
         let artifact = package.appendingPathComponent("artifacts/nested/document.bin")

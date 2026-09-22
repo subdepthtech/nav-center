@@ -397,7 +397,7 @@ public final class PackageCleanup {
     }
 
     private func assertNoCustomTriggers(_ connection: SQLiteSupport.Connection, before operation: String) throws {
-        let triggers = try connection.rows("select name from sqlite_master where type = 'trigger' and tbl_name in ('applications', 'status_events', 'artifacts');")
+        let triggers = try connection.rows("select name from sqlite_master where type = 'trigger' and lower(tbl_name) in ('applications', 'status_events', 'artifacts');")
         guard triggers.isEmpty else {
             throw NavCenterError.invalidPath("Tracker has custom triggers. Review them before automatic \(operation); existing records were preserved.")
         }
