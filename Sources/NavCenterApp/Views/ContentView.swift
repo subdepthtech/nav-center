@@ -486,7 +486,7 @@ private struct JobDescriptionPastePanel: View {
                         Text(message)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .lineLimit(4)
                     }
                 }
             }

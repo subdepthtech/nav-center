@@ -85,13 +85,28 @@ final class NativeDashboardService: @unchecked Sendable {
             throw DashboardAPIError.missingPackageName
         }
         let application = data.applications.first(where: { $0.packageName == packageName })
+        var sources = data.sources
+        var events: [PackageStatusEvent] = []
+        if let application, application.source.tracker {
+            do {
+                events = try packageStatusEvents(applicationID: application.id)
+            } catch {
+                sources.tracker.warnings.append("Status history could not be read. Package details are still available.")
+            }
+        }
         return PackageResponse(
             generatedAt: ISO8601DateFormatter().string(from: Date()),
             package: package,
             application: application,
-            statusEvents: [],
-            sources: data.sources
+            statusEvents: events,
+            sources: sources
         )
+    }
+
+    private func packageStatusEvents(applicationID: String) throws -> [PackageStatusEvent] {
+        try TrackerStore(repoRoot: repoRoot, dbPath: trackerDB).statusEvents(applicationID: applicationID, limit: 50).map {
+            PackageStatusEvent(oldStatus: $0.oldStatus, newStatus: $0.newStatus, changedAt: $0.changedAt)
+        }
     }
 
     func fetchFilePreview(packageName: String, file: String) throws -> PackageFilePreviewResponse {

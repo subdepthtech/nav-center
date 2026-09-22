@@ -6,6 +6,8 @@ struct ApplicationsView: View {
     @State private var locationFilter = ApplicationsFilterDefaults.location
     @State private var sourceFilter = ApplicationsFilterDefaults.source
     @State private var currentPage = 0
+    @State private var statusBanner: String?
+    @State private var statusBannerDismissal: Task<Void, Never>?
 
     private let rowsPerPage = 12
 
@@ -59,6 +61,7 @@ struct ApplicationsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                statusConfirmationBanner
                 filterBar
                 applicationsTable
             }
@@ -70,6 +73,37 @@ struct ApplicationsView: View {
         .onChange(of: statusFilter) { _ in resetPage() }
         .onChange(of: locationFilter) { _ in resetPage() }
         .onChange(of: sourceFilter) { _ in resetPage() }
+        .onChange(of: store.statusMessage) { message in
+            statusBannerDismissal?.cancel()
+            statusBanner = message
+            guard message != nil else { return }
+            statusBannerDismissal = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                guard !Task.isCancelled else { return }
+                statusBanner = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var statusConfirmationBanner: some View {
+        if let statusBanner {
+            HStack {
+                Text(statusBanner)
+                Spacer()
+                Button {
+                    statusBannerDismissal?.cancel()
+                    self.statusBanner = nil
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .accessibilityLabel("Dismiss status message")
+            }
+            .padding(12)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Status update: \(statusBanner)")
+        }
     }
 
     private var filterBar: some View {

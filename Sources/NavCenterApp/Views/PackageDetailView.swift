@@ -435,8 +435,8 @@ private struct InterviewPrepWorkspace: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 12)], alignment: .leading, spacing: 12) {
-                SummaryMetric(title: "Model", value: "gpt-realtime-2", detail: "Realtime interviewer", systemImage: "waveform")
-                SummaryMetric(title: "Session Kit", value: hasKit ? "Ready" : "Missing", detail: "Client secret payload", systemImage: hasKit ? "checkmark.circle" : "circle")
+                SummaryMetric(title: "Kit Format", value: "Local JSON", detail: "For an external realtime client", systemImage: "doc.text")
+                SummaryMetric(title: "Session Kit", value: hasKit ? "Ready" : "Missing", detail: "Session payload for an external client", systemImage: hasKit ? "checkmark.circle" : "circle")
                 SummaryMetric(title: "Transcript", value: hasTranscript ? "File present" : "Missing", detail: "Save transcript before review", systemImage: "doc.text")
                 SummaryMetric(title: "Codex Review", value: hasReview ? "Written" : "Pending", detail: "After-action guidance", systemImage: "sparkles")
             }
@@ -466,7 +466,7 @@ private struct InterviewPrepWorkspace: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Text("Live API testing uses `OPENAI_API_KEY` with the generated `interview-realtime-session.json` payload. The secret itself is not written into the package.")
+                    Text("Nav Center writes interview-realtime-session.json for an external realtime interview client. It does not call any model API and never stores API keys.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1048,6 +1048,22 @@ private struct PackageRailContent: View {
                         Spacer()
                     }
                     PackageStatusButtons(packageName: packageRecord.name)
+                    Text("Status History")
+                        .font(.headline)
+                    if let events = store.selectedPackage?.statusEvents, !events.isEmpty {
+                        ForEach(Array(events.prefix(10).enumerated()), id: \.offset) { _, event in
+                            Text(event.oldStatus.isEmpty
+                                ? "\(event.changedAt) · Set to \(event.newStatus)"
+                                : "\(event.changedAt) · \(event.oldStatus) → \(event.newStatus)")
+                                .font(.caption)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel("\(event.newStatus) on \(event.changedAt), previously \(event.oldStatus)")
+                        }
+                    } else {
+                        Text("No status changes recorded.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     if let message = store.statusMessage {
                         Text(message)
                             .font(.caption)

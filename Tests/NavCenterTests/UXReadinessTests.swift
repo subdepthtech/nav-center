@@ -379,6 +379,29 @@ final class UXReadinessTests: XCTestCase {
         XCTAssertEqual(update.newStatus, "Interview")
     }
 
+    func testStatusHistoryListsEventsNewestFirstAfterStatusChange() throws {
+        let root = try workspace()
+        _ = try WorkspaceManager(workspaceRoot: root).initialize()
+        let service = NativeDashboardService(repoRoot: root)
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+        _ = try service.updatePackageStatus(packageName: name, status: .submitted)
+        _ = try service.updatePackageStatus(packageName: name, status: .interview)
+        let events = try service.fetchPackage(named: name).statusEvents
+        XCTAssertEqual(events.count, 2)
+        XCTAssertEqual(events.map(\.newStatus), ["Interview", "Submitted"])
+        XCTAssertEqual(events.map(\.oldStatus), ["Submitted", ""])
+    }
+
+    @MainActor
+    func testImportFailureSurfacesAsError() async {
+        let store = DashboardStore(service: UXTestService())
+        store.onboardingMessage = "Earlier import succeeded"
+        await store.importSourceDocuments([URL(fileURLWithPath: "/tmp/synthetic-import.txt")])
+        XCTAssertNotNil(store.errorMessage)
+        XCTAssertNil(store.onboardingMessage)
+    }
+
     func testMissingTrackerIsNormalPackageOnlyViewWithoutWarning() throws {
         let root = try workspace()
         let service = NativeDashboardService(repoRoot: root)

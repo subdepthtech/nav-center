@@ -38,6 +38,13 @@ enum MasterResumeSaveOutcome: Equatable {
     case notSaved(String)
 }
 
+enum CodexSendOutcome: Equatable {
+    case started
+    case busy
+    case rejected(String)
+    case failed(String)
+}
+
 extension DashboardServicing {
     func fetchPDFPreviewData(packageName: String, relativePath: String) throws -> Data {
         throw DashboardAPIError.serverUnavailable("PDF preview is not available.")
@@ -78,6 +85,7 @@ final class DashboardStore: ObservableObject {
     @Published var isImportingDocuments = false
     @Published var isPreparingInterviewKit = false
     @Published var intakeMessage: String?
+    @Published private(set) var lastCodexAutomationOutcome: CodexSendOutcome?
     @Published var interviewKitMessage: String?
     @Published var statusMessage: String?
     @Published var cleanupPreview: PackageCleanupPreview?
@@ -208,6 +216,7 @@ final class DashboardStore: ObservableObject {
 
     func loadPackage(named packageName: String) async {
         saveActiveCodexConversation()
+        if selectedPackage?.package.name != packageName { statusMessage = nil }
         let revision = UUID()
         selectionRevision = revision
         beginLoading()
@@ -283,6 +292,7 @@ final class DashboardStore: ObservableObject {
     func updatePackageStatus(_ action: TrackerStatusQuickAction, packageName: String) async {
         guard !packageName.isEmpty else { errorMessage = DashboardAPIError.missingPackageName.localizedDescription; return }
         guard !isUpdatingStatus else { return }
+        statusMessage = nil
         isUpdatingStatus = true
         defer { isUpdatingStatus = false }
         do {
@@ -346,10 +356,14 @@ final class DashboardStore: ObservableObject {
             let imported = try await background { try $0.importDocuments(urls) }
             importedDocuments = imported
             onboardingMessage = "Imported \(imported.count) source document\(imported.count == 1 ? "" : "s") for review."
-        } catch { onboardingMessage = error.localizedDescription }
+        } catch {
+            onboardingMessage = nil
+            errorMessage = error.localizedDescription
+        }
     }
 
     func createPackageFromIntake(_ request: JobDescriptionIntakeRequest, runCodexAutomation: Bool) async {
+        lastCodexAutomationOutcome = nil
         let trimmed = request.trimmed
         guard !trimmed.company.isEmpty, !trimmed.role.isEmpty, !trimmed.postingText.isEmpty else {
             errorMessage = "Company, role, and pasted job description are required."
@@ -365,7 +379,16 @@ final class DashboardStore: ObservableObject {
             try await refreshAll()
             if selectionRevision == revision { await loadPackage(named: result.packageName) }
             if runCodexAutomation {
-                await sendCodexMessage(codexPackageBuildPrompt(packageName: result.packageName, request: trimmed), allowEdits: true, confirmed: true, packageName: result.packageName)
+                let outcome = await sendCodexMessage(codexPackageBuildPrompt(packageName: result.packageName, request: trimmed), allowEdits: true, confirmed: true, packageName: result.packageName)
+                lastCodexAutomationOutcome = outcome
+                switch outcome {
+                case .started:
+                    intakeMessage = "Created package: \(result.packageName). Codex is building the resume and prep files; watch the Codex panel."
+                case .busy:
+                    intakeMessage = "Created package: \(result.packageName). Codex automation did not start because another Codex turn is running. Open the package and send the build prompt from the Codex panel."
+                case .rejected(let reason), .failed(let reason):
+                    intakeMessage = "Created package: \(result.packageName). Codex automation failed: \(reason)"
+                }
             }
         } catch { errorMessage = error.localizedDescription }
     }
@@ -496,13 +519,15 @@ final class DashboardStore: ObservableObject {
         } catch { codexErrorMessage = error.localizedDescription }
     }
 
-    func sendCodexMessage(_ message: String, allowEdits: Bool, confirmed: Bool, packageName: String? = nil) async {
-        guard let name = packageName ?? selectedPackage?.package.name, !isCodexLoading else { return }
+    @discardableResult
+    func sendCodexMessage(_ message: String, allowEdits: Bool, confirmed: Bool, packageName: String? = nil) async -> CodexSendOutcome {
+        guard let name = packageName ?? selectedPackage?.package.name else { return .rejected(DashboardAPIError.missingPackageName.localizedDescription) }
+        guard !isCodexLoading else { return .busy }
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else { return .rejected("Message is empty.") }
         guard !allowEdits || confirmed else {
             codexErrorMessage = "Confirm package markdown edits before sending."
-            return
+            return .rejected("Confirm package markdown edits before sending.")
         }
         saveActiveCodexConversation()
         var conversation = codexConversations[name] ?? CodexPackageConversation()
@@ -524,11 +549,13 @@ final class DashboardStore: ObservableObject {
                 codexErrorMessage = response.ok ? nil : response.message.nonEmptyFallback("Codex could not complete the turn.")
             }
             if allowEdits, response.ok { try await refreshPackageIfCurrent(name, revision: selectionRevision) }
+            return response.ok ? .started : .rejected(response.message.nonEmptyFallback("Codex could not complete the turn."))
         } catch {
             conversation.messages.append(CodexChatMessage(role: .system, text: error.localizedDescription))
             codexConversations[name] = conversation
             publishCodexConversation(for: name)
             if selectedPackage?.package.name == name { codexErrorMessage = error.localizedDescription }
+            return .failed(error.localizedDescription)
         }
     }
 
@@ -553,6 +580,7 @@ final class DashboardStore: ObservableObject {
 
     func closePackage() {
         saveActiveCodexConversation()
+        statusMessage = nil
         selectionRevision = UUID()
         selectedPackage = nil
         filePreviewCache = [:]

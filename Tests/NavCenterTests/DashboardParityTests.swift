@@ -245,6 +245,67 @@ final class DashboardParityTests: XCTestCase {
         XCTAssertEqual(store.selectedPackage?.package.name, "2099-04-01_Paste_Corp_Product_Security_Engineer")
         XCTAssertEqual(store.intakeMessage, "Created package: 2099-04-01_Paste_Corp_Product_Security_Engineer")
         XCTAssertTrue(store.codexMessages.isEmpty)
+        XCTAssertNil(store.lastCodexAutomationOutcome)
+    }
+
+    @MainActor
+    func testIntakeReportsBusyCodexInsteadOfSilentlyDroppingAutomation() async {
+        let service = IntakeDashboardService()
+        let store = DashboardStore(service: service)
+        await store.loadPackage(named: "Existing")
+        let started = expectation(description: "Codex turn started")
+        let release = DispatchSemaphore(value: 0)
+        service.chatStarted = started
+        service.chatRelease = release
+        let turn = Task { await store.sendCodexMessage("Existing turn", allowEdits: false, confirmed: false) }
+        await fulfillment(of: [started], timeout: 2)
+        await store.createPackageFromIntake(intakeRequest(), runCodexAutomation: true)
+        let name = "2099-04-01_Paste_Corp_Product_Security_Engineer"
+        XCTAssertEqual(store.lastCodexAutomationOutcome, .busy)
+        XCTAssertEqual(store.intakeMessage, "Created package: \(name). Codex automation did not start because another Codex turn is running. Open the package and send the build prompt from the Codex panel.")
+        release.signal()
+        _ = await turn.value
+    }
+
+    @MainActor
+    func testIntakeReportsCodexFailureAfterPackageIsCreated() async {
+        let service = IntakeDashboardService()
+        service.chatError = DashboardAPIError.serverUnavailable("Synthetic Codex failure")
+        let store = DashboardStore(service: service)
+        await store.createPackageFromIntake(intakeRequest(), runCodexAutomation: true)
+        XCTAssertEqual(service.createdRequests.count, 1)
+        XCTAssertEqual(store.lastCodexAutomationOutcome, .failed("Synthetic Codex failure"))
+        XCTAssertTrue(store.intakeMessage?.hasPrefix("Created package: 2099-04-01_Paste_Corp_Product_Security_Engineer. Codex automation failed:") == true)
+    }
+
+    @MainActor
+    func testIntakeWithoutAutomationLeavesOutcomeNotRequested() async {
+        let store = DashboardStore(service: IntakeDashboardService())
+        await store.createPackageFromIntake(intakeRequest(), runCodexAutomation: false)
+        XCTAssertNil(store.lastCodexAutomationOutcome)
+        XCTAssertEqual(store.intakeMessage, "Created package: 2099-04-01_Paste_Corp_Product_Security_Engineer")
+    }
+
+    @MainActor
+    func testPackageResponseCarriesStatusEventsFromFakeService() async {
+        let service = IntakeDashboardService()
+        service.statusEvents = [PackageStatusEvent(oldStatus: "Submitted", newStatus: "Interview", changedAt: "2099-04-02T12:00:00Z")]
+        let store = DashboardStore(service: service)
+        await store.loadPackage(named: "2099-04-01_Paste_Corp_Product_Security_Engineer")
+        XCTAssertEqual(store.selectedPackage?.statusEvents, service.statusEvents)
+    }
+
+    @MainActor
+    func testStatusChangeFromTablePublishesConfirmationMessage() async {
+        let service = IntakeDashboardService()
+        let store = DashboardStore(service: service)
+        let application = ApplicationRecord(id: "app", packageName: "2099-04-01_Paste_Corp_Product_Security_Engineer", date: "", company: "", role: "", location: "", salary: "", status: "", nextActionDate: "", applicationDir: "", applyLink: "", sourceName: "", sourceId: "", notes: "", notesPreview: "", createdAt: "", updatedAt: "", source: .empty, health: .empty, files: [], dbArtifacts: [])
+        await store.updateStatus(.submitted, for: application)
+        XCTAssertEqual(store.statusMessage, "2099-04-01_Paste_Corp_Product_Security_Engineer: Submitted")
+    }
+
+    private func intakeRequest() -> JobDescriptionIntakeRequest {
+        JobDescriptionIntakeRequest(company: "Paste Corp", role: "Product Security Engineer", postingText: "Synthetic posting", sourceURL: "", location: "", salary: "")
     }
 
     @MainActor
@@ -421,6 +482,10 @@ private final class IntakeDashboardService: DashboardServicing, @unchecked Senda
     var sentCodexRequests: [CodexChatRequest] = []
     var confirmedActionResult: ActionResultResponse?
     var lastAction: (packageName: String, actionKey: String, confirmed: Bool)?
+    var chatStarted: XCTestExpectation?
+    var chatRelease: DispatchSemaphore?
+    var chatError: Error?
+    var statusEvents: [PackageStatusEvent] = []
 
     func createPackage(from request: JobDescriptionIntakeRequest) throws -> CreateApplicationResult {
         createdRequests.append(request)
@@ -506,7 +571,7 @@ private final class IntakeDashboardService: DashboardServicing, @unchecked Senda
                 health: PackageHealth.empty
             ),
             application: nil,
-            statusEvents: [],
+            statusEvents: statusEvents,
             sources: Self.sources()
         )
     }
@@ -526,7 +591,8 @@ private final class IntakeDashboardService: DashboardServicing, @unchecked Senda
     }
 
     func updatePackageStatus(packageName: String, status: TrackerStatus) throws -> TrackerStatusUpdateResult {
-        throw DashboardAPIError.serverUnavailable("not used")
+        let json = "{\"applicationID\":\"app\",\"packageName\":\"\(packageName)\",\"oldStatus\":\"\",\"newStatus\":\"\(status.rawValue)\",\"changedAt\":\"2099-04-01T12:00:00Z\",\"warnings\":[]}"
+        return try JSONDecoder().decode(TrackerStatusUpdateResult.self, from: Data(json.utf8))
     }
 
     func previewPackageCleanup(olderThanDays: Int) throws -> PackageCleanupPreview {
@@ -571,6 +637,9 @@ private final class IntakeDashboardService: DashboardServicing, @unchecked Senda
 
     func sendCodexChat(_ payload: CodexChatRequest) throws -> CodexChatResponse {
         sentCodexRequests.append(payload)
+        chatStarted?.fulfill()
+        if let chatRelease { _ = chatRelease.wait(timeout: .now() + 5) }
+        if let chatError { throw chatError }
         return CodexChatResponse(
             ok: true,
             threadId: payload.threadId ?? "thread_1",

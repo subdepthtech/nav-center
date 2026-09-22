@@ -285,8 +285,14 @@ struct PackageResponse: Codable {
     var generatedAt: String
     var package: ApplicationPackage
     var application: ApplicationRecord?
-    var statusEvents: [JSONValue]
+    var statusEvents: [PackageStatusEvent]
     var sources: DashboardSources
+}
+
+struct PackageStatusEvent: Codable, Equatable {
+    var oldStatus: String
+    var newStatus: String
+    var changedAt: String
 }
 
 struct ApplicationPackage: Codable, Identifiable, Hashable {

@@ -288,6 +288,13 @@ final class DashboardModelsTests: XCTestCase {
         XCTAssertEqual(package.package.name, "2026-05-05_Example_Security_Engineer")
         XCTAssertEqual(package.package.tabs.first?.primaryFile?.relativePath, "posting.md")
         XCTAssertEqual(package.package.artifactSummary.byFormat["json"], 1)
+        XCTAssertTrue(package.statusEvents.isEmpty)
+        let withEvent = packageJson.replacingOccurrences(
+            of: "\"statusEvents\": []",
+            with: "\"statusEvents\": [{\"oldStatus\":\"Submitted\",\"newStatus\":\"Interview\",\"changedAt\":\"2026-05-06T13:00:00Z\"}]"
+        )
+        let eventPackage = try decoder.decode(PackageResponse.self, from: Data(withEvent.utf8))
+        XCTAssertEqual(eventPackage.statusEvents, [PackageStatusEvent(oldStatus: "Submitted", newStatus: "Interview", changedAt: "2026-05-06T13:00:00Z")])
         XCTAssertEqual(actions.actions.first?.status, "succeeded")
         XCTAssertEqual(actions.actions.first?.exitCode, 0)
     }
