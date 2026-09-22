@@ -50,8 +50,8 @@ struct NavCenterCLI {
             try writeJSON(imported)
         case "feedback-diagnostics":
             let includeUnredacted = parser.flag("--include-unredacted")
-            _ = parser.flag("--redact")
-            let report = FeedbackDiagnostics(workspaceRoot: workspace).report(redact: !includeUnredacted)
+            let explicitRedact = parser.flag("--redact")
+            let report = FeedbackDiagnostics(workspaceRoot: workspace).report(redact: explicitRedact || !includeUnredacted)
             try writeJSON(report)
         case "restore-cleanup":
             let path = try parser.requiredOption("--manifest")

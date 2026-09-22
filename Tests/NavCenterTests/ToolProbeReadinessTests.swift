@@ -216,6 +216,54 @@ final class ToolProbeReadinessTests: XCTestCase {
         XCTAssertEqual(ToolAvailabilityReport.empty.tools, [])
     }
 
+    func testRelativeOverridePathIsOverrideInvalid() {
+        let recorder = PathRecorder()
+        let configuration = ToolProbeConfiguration(
+            environment: ["NAV_CENTER_ATSIM_BIN": "tools/atsim", "PATH": "/usr/bin"],
+            homeDirectory: home,
+            fallbackDirectories: ["/opt/homebrew/bin"],
+            isExecutableRegularFile: { path in
+                recorder.record(path)
+                return true
+            }
+        )
+        let status = ToolProbe.resolve(.atsim, configuration: configuration)
+        XCTAssertEqual(status.state, .overrideInvalid)
+        XCTAssertEqual(status.summary, "NAV_CENTER_ATSIM_BIN must be an absolute path")
+        XCTAssertEqual(status.resolvedPath, "tools/atsim")
+        XCTAssertNil(status.source)
+        XCTAssertEqual(recorder.paths, [])
+        XCTAssertNil(ToolProbe.executablePath(for: .atsim, configuration: configuration))
+    }
+
+    func testRelativePathEntriesAreSkipped() {
+        let recorder = PathRecorder()
+        let configuration = ToolProbeConfiguration(
+            environment: ["PATH": "bin:tools/atsim:/usr/bin:", "PANDOC_BIN": ""],
+            homeDirectory: home,
+            fallbackDirectories: ["relative-fallback", "/opt/homebrew/bin"],
+            isExecutableRegularFile: { path in
+                recorder.record(path)
+                return false
+            }
+        )
+        let missing = ToolProbe.resolve(.pandoc, configuration: configuration)
+        XCTAssertEqual(missing.state, .missing)
+        XCTAssertNil(missing.resolvedPath)
+        XCTAssertEqual(recorder.paths, ["/usr/bin/pandoc", "/opt/homebrew/bin/pandoc"])
+
+        let found = ToolProbe.resolve(.ruby, configuration: ToolProbeConfiguration(
+            environment: ["PATH": "bin"],
+            homeDirectory: home,
+            fallbackDirectories: ["relative-fallback", "/usr/bin"],
+            isExecutableRegularFile: { $0 == "/usr/bin/ruby" }
+        ))
+        XCTAssertEqual(found.state, .found)
+        XCTAssertEqual(found.source, .fallback)
+        XCTAssertEqual(found.resolvedPath, "/usr/bin/ruby")
+        XCTAssertTrue(found.resolvedPath?.hasPrefix("/") == true)
+    }
+
     func testReportRedactsHomeDirectoryInResolvedPathsAndSummaries() {
         let path = "/Users/synthetic/bin/pandoc"
         let invalid = "/Users/synthetic/missing-atsim"
@@ -233,6 +281,25 @@ final class ToolProbeReadinessTests: XCTestCase {
         XCTAssertEqual(atsim?.state, .overrideInvalid)
         XCTAssertEqual(atsim?.resolvedPath, "<home>/missing-atsim")
         XCTAssertFalse(redacted.tools.contains { ($0.resolvedPath ?? "").contains("/Users/synthetic") || $0.summary.contains("/Users/synthetic") })
+    }
+
+    func testReportRedactsOtherUserHomePathsLikeDiagnostics() throws {
+        let other = "/Users/other-person/bin/atsim"
+        let redacted = ToolProbe.report(configuration: ToolProbeConfiguration(
+            environment: ["PATH": "", "NAV_CENTER_ATSIM_BIN": other],
+            homeDirectory: home,
+            fallbackDirectories: [],
+            isExecutableRegularFile: { $0 == other }
+        )).redacted(homeDirectory: home)
+        let atsim = try XCTUnwrap(redacted.tools.first { $0.tool == .atsim })
+        XCTAssertEqual(atsim.state, .found)
+        XCTAssertEqual(atsim.resolvedPath, "<home>/bin/atsim")
+        XCTAssertEqual(atsim.summary, "found at <home>/bin/atsim (environment override)")
+        XCTAssertEqual(PathRedactor.redact(other, homeDirectory: home), "<home>/bin/atsim")
+        XCTAssertEqual(PathRedactor.redact("owner synthetic at /opt/synthetic/tool", homeDirectory: home), "owner <user> at /opt/<user>/tool")
+        XCTAssertFalse(atsim.resolvedPath?.contains("/Users/") == true)
+        XCTAssertFalse(atsim.summary.contains("other-person"))
+        XCTAssertFalse(redacted.tools.contains { ($0.resolvedPath ?? "").contains("/Users/") || $0.summary.contains("/Users/") })
     }
 
     func testMissingToolMessageNamesToolEnvironmentVariableAndInstallHint() {

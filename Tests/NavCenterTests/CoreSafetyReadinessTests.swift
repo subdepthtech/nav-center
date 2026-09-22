@@ -317,7 +317,7 @@ final class CoreSafetyReadinessTests: XCTestCase {
         XCTAssertThrowsError(try store.save(content: "profile: {}", expectedContent: original))
     }
 
-    func testRedactedDiagnosticsRedactsLogLinesAndToolPaths() throws {
+    func testRedactedDiagnosticsNeverIncludesRawLogsOrOverridePath() throws {
         let root = try fixture()
         _ = try WorkspaceManager(workspaceRoot: root).initialize()
         let home = root.appendingPathComponent("Users/synthetic", isDirectory: true).standardizedFileURL
@@ -325,7 +325,7 @@ final class CoreSafetyReadinessTests: XCTestCase {
         try FileManager.default.createDirectory(at: override.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("#!/bin/sh\nexit 0\n".utf8).write(to: override)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: override.path)
-        try Data("Authorization: Bearer SYNTHETIC_TOKEN_NOT_REAL\npath=\(home.path)/resume.pdf".utf8).write(to: root.appendingPathComponent("logs/example.log"))
+        try Data("Authorization: Bearer SYNTHETIC_TOKEN_NOT_REAL\nemail=synthetic@example.invalid\npath=\(home.path)/resume.pdf".utf8).write(to: root.appendingPathComponent("logs/example.log"))
         let probe = ToolProbeConfiguration(
             environment: ["PATH": "", "NAV_CENTER_ATSIM_BIN": override.path],
             homeDirectory: home,
@@ -335,9 +335,9 @@ final class CoreSafetyReadinessTests: XCTestCase {
         let json = String(decoding: try JSONEncoder().encode(report), as: UTF8.self)
         let toolsJSON = String(decoding: try JSONEncoder().encode(report.tools), as: UTF8.self)
         XCTAssertEqual(report.workspace.path, "<workspace>")
-        XCTAssertFalse(report.recentLogs.isEmpty)
-        XCTAssertTrue(report.recentLogs.joined(separator: "\n").contains("<home>"))
-        XCTAssertFalse(report.recentLogs.joined(separator: "\n").contains(home.path))
+        XCTAssertTrue(report.recentLogs.isEmpty)
+        XCTAssertFalse(json.contains("SYNTHETIC_TOKEN"))
+        XCTAssertFalse(json.contains("synthetic@example"))
         XCTAssertFalse(json.contains("/Users/"))
         XCTAssertFalse(json.contains(home.path))
         XCTAssertFalse(toolsJSON.contains("/Users/"))

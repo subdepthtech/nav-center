@@ -156,8 +156,11 @@ final class UXReadinessTests: XCTestCase {
 
         XCTAssertEqual(try Data(contentsOf: resume), original)
         let work = root.appendingPathComponent("tmp/master-resume-editor")
-        let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: work.path)) ?? []
-        XCTAssertFalse(leftovers.contains { $0.hasPrefix("candidate-") })
+        if FileManager.default.fileExists(atPath: work.path) {
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: work.path)) ?? []
+            XCTAssertFalse(names.contains { $0.hasPrefix("candidate-") && $0.hasSuffix(".yaml") })
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: work.path))
         let backups = work.appendingPathComponent("backups")
         XCTAssertEqual((try? FileManager.default.contentsOfDirectory(atPath: backups.path)) ?? [], [])
     }

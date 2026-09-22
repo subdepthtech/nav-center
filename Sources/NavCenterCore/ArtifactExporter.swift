@@ -13,12 +13,15 @@ public struct ExportedDocument: Equatable {
 }
 
 public final class ArtifactExporter {
+    private struct ResolvedTools {
+        let pandoc: String
+        let pdftotext: String
+        let chrome: String
+    }
+
     private let repoRoot: URL
     private let environment: [String: String]
     private let toolProbe: ToolProbeConfiguration
-    private var pandocPath = ""
-    private var pdftotextPath = ""
-    private var chromePath = ""
 
     public init(repoRoot: URL, environment: [String: String] = ProcessInfo.processInfo.environment, toolProbe: ToolProbeConfiguration? = nil) {
         self.repoRoot = repoRoot
@@ -30,15 +33,17 @@ public final class ArtifactExporter {
         guard !markdownPaths.isEmpty else {
             throw NavCenterError.invalidPath("Provide at least one markdown source to export.")
         }
-        pandocPath = try resolvedExecutable(.pandoc)
-        pdftotextPath = try resolvedExecutable(.pdftotext)
-        chromePath = try resolvedExecutable(.chrome)
-        try ensureTool(pandocPath)
-        try ensureTool(pdftotextPath, arguments: ["-v"])
+        let tools = ResolvedTools(
+            pandoc: try resolvedExecutable(.pandoc),
+            pdftotext: try resolvedExecutable(.pdftotext),
+            chrome: try resolvedExecutable(.chrome)
+        )
+        try ensureTool(tools.pandoc)
+        try ensureTool(tools.pdftotext, arguments: ["-v"])
 
         var results: [ExportedDocument] = []
         for input in markdownPaths {
-            do { results.append(try exportOne(input)) }
+            do { results.append(try exportOne(input, tools: tools)) }
             catch { throw ArtifactExportBatchError(completed: results, failedInput: input, reason: error.localizedDescription) }
         }
         return results
@@ -56,7 +61,7 @@ public final class ArtifactExporter {
         repoRoot.appendingPathComponent("output", isDirectory: true)
     }
 
-    private func exportOne(_ input: String) throws -> ExportedDocument {
+    private func exportOne(_ input: String, tools: ResolvedTools) throws -> ExportedDocument {
         let source = (input.hasPrefix("/") ? URL(fileURLWithPath: input) : repoRoot.appendingPathComponent(input)).standardizedFileURL
         guard FileManager.default.fileExists(atPath: source.path) else {
             throw NavCenterError.notFound("Source markdown not found: \(input)")
@@ -116,7 +121,7 @@ public final class ArtifactExporter {
         }
         // A fragment avoids user/default standalone templates and their active resources.
         // --sandbox is required: older Pandoc versions must fail rather than read includes.
-        try runOrThrow(pandocPath, [capturedSource.path, "--sandbox", "--from=markdown", "--to=html4", "-o", staged[0].path])
+        try runOrThrow(tools.pandoc, [capturedSource.path, "--sandbox", "--from=markdown", "--to=html4", "-o", staged[0].path])
         let fragmentData = try PathSafety.readData(staged[0], inside: staging, label: "Export HTML fragment", maxBytes: 256 * 1024)
         guard let fragment = String(data: fragmentData, encoding: .utf8) else { throw NavCenterError.commandFailed("Pandoc HTML must use UTF-8 encoding.") }
         let document = try InertDocumentRenderer.document(fragment: fragment, css: stylesheet)
@@ -125,14 +130,14 @@ public final class ArtifactExporter {
         if let capturedReference {
             docxArgs.insert("--reference-doc=\(capturedReference.path)", at: 1)
         }
-        try runOrThrow(pandocPath, docxArgs)
-        try InertDocumentRenderer.render(document: document, pdfURL: staged[2], staging: staging, chromePath: chromePath)
+        try runOrThrow(tools.pandoc, docxArgs)
+        try InertDocumentRenderer.render(document: document, pdfURL: staged[2], staging: staging, chromePath: tools.chrome)
         let htmlData = try PathSafety.readData(staged[0], inside: staging, label: "export HTML")
         let docxData = try PathSafety.readData(staged[1], inside: staging, label: "export DOCX")
         let pdfData = try PathSafety.readData(staged[2], inside: staging, label: "export PDF")
         guard !htmlData.isEmpty, docxData.starts(with: Data("PK".utf8)), pdfData.starts(with: Data("%PDF-".utf8)) else { throw NavCenterError.commandFailed("Export did not produce the expected HTML, DOCX, and PDF formats.") }
-        let docxExtract = try captureOrThrow(pandocPath, [staged[1].path, "--sandbox", "-t", "plain"])
-        let pdfExtract = try captureOrThrow(pdftotextPath, ["-layout", staged[2].path, "-"])
+        let docxExtract = try captureOrThrow(tools.pandoc, [staged[1].path, "--sandbox", "-t", "plain"])
+        let pdfExtract = try captureOrThrow(tools.pdftotext, ["-layout", staged[2].path, "-"])
         try assertExtractedText("DOCX", docxExtract, source: docx)
         try assertExtractedText("PDF", pdfExtract, source: pdf)
         guard try PathSafety.identity(writeRoot) == rootIdentity else { throw NavCenterError.invalidPath("Export output root changed during conversion.") }

@@ -1,6 +1,7 @@
 import Foundation
 import Darwin
 import XCTest
+import NavCenterCore
 @testable import NavCenterApp
 
 final class NativeCodexBridgeSecurityTests: XCTestCase {
@@ -237,6 +238,75 @@ final class NativeCodexBridgeSecurityTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: replacementPackage.appendingPathComponent("posting.md")), "original posting")
     }
 
+    func testCodexCommandResolutionUsesToolProbeOrder() {
+        let home = URL(fileURLWithPath: "/Users/synthetic", isDirectory: true)
+        let fallbacks = ["/opt/homebrew/bin", "/usr/local/bin", "/Users/synthetic/.local/bin"]
+
+        let override = ToolProbeConfiguration(
+            environment: ["DASHBOARD_CODEX_BIN": "/opt/custom/codex", "PATH": "/usr/bin"],
+            homeDirectory: home,
+            fallbackDirectories: fallbacks,
+            isExecutableRegularFile: { $0 == "/opt/custom/codex" }
+        )
+        XCTAssertEqual(NativeCodexBridge.resolveCodexCommand(configuration: override), "/opt/custom/codex")
+
+        let pathBeforeFallback = ToolProbeConfiguration(
+            environment: ["PATH": "/usr/bin:/opt/custom/bin"],
+            homeDirectory: home,
+            fallbackDirectories: fallbacks,
+            isExecutableRegularFile: { $0 == "/opt/custom/bin/codex" || $0 == "/opt/homebrew/bin/codex" }
+        )
+        XCTAssertEqual(NativeCodexBridge.resolveCodexCommand(configuration: pathBeforeFallback), "/opt/custom/bin/codex")
+
+        let searched = CodexCommandPathRecorder()
+        let fallbackOnly = ToolProbeConfiguration(
+            environment: ["PATH": ""],
+            homeDirectory: home,
+            fallbackDirectories: fallbacks,
+            isExecutableRegularFile: { path in
+                searched.record(path)
+                return path == "/Users/synthetic/.local/bin/codex"
+            }
+        )
+        XCTAssertEqual(
+            NativeCodexBridge.resolveCodexCommand(configuration: fallbackOnly),
+            "/Users/synthetic/.local/bin/codex"
+        )
+        XCTAssertEqual(searched.paths, fallbacks.map { $0 + "/codex" })
+
+        let invalidOverride = ToolProbeConfiguration(
+            environment: ["PATH": "/usr/bin", "DASHBOARD_CODEX_BIN": "/missing/codex"],
+            homeDirectory: home,
+            fallbackDirectories: fallbacks,
+            isExecutableRegularFile: { _ in false }
+        )
+        XCTAssertEqual(NativeCodexBridge.resolveCodexCommand(configuration: invalidOverride), "/missing/codex")
+
+        let relativeOverride = ToolProbeConfiguration(
+            environment: ["DASHBOARD_CODEX_BIN": "tools/codex", "PATH": "/usr/bin"],
+            homeDirectory: home,
+            fallbackDirectories: fallbacks,
+            isExecutableRegularFile: { _ in true }
+        )
+        XCTAssertEqual(NativeCodexBridge.resolveCodexCommand(configuration: relativeOverride), "tools/codex")
+
+        let missing = ToolProbeConfiguration(
+            environment: ["PATH": "/usr/bin"],
+            homeDirectory: home,
+            fallbackDirectories: fallbacks,
+            isExecutableRegularFile: { _ in false }
+        )
+        XCTAssertEqual(NativeCodexBridge.resolveCodexCommand(configuration: missing), "codex")
+
+        let bareNameMissing = ToolProbeConfiguration(
+            environment: ["DASHBOARD_CODEX_BIN": "custom-codex", "PATH": "/usr/bin"],
+            homeDirectory: home,
+            fallbackDirectories: fallbacks,
+            isExecutableRegularFile: { _ in false }
+        )
+        XCTAssertEqual(NativeCodexBridge.resolveCodexCommand(configuration: bareNameMissing), "custom-codex")
+    }
+
     private func makeFixture() throws -> (root: URL, package: URL, stagingParent: URL) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("nav-center-broker-tests-\(UUID().uuidString)", isDirectory: true)
         let package = root.appendingPathComponent("applications/example", isDirectory: true)
@@ -246,5 +316,22 @@ final class NativeCodexBridgeSecurityTests: XCTestCase {
         try Data("original posting".utf8).write(to: package.appendingPathComponent("posting.md"))
         try Data("keep".utf8).write(to: package.appendingPathComponent("artifact.json"))
         return (root, package, stagingParent)
+    }
+}
+
+private final class CodexCommandPathRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [String] = []
+
+    func record(_ path: String) {
+        lock.lock()
+        recorded.append(path)
+        lock.unlock()
+    }
+
+    var paths: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
     }
 }

@@ -633,6 +633,9 @@ private struct SettingsWorkspaceView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HeaderBlock(title: "Settings", subtitle: "Local workspace and privacy status for this native dashboard.")
+                Panel("About") {
+                    settingRow("Version", store.appVersion)
+                }
                 Panel("Local Data") {
                     VStack(alignment: .leading, spacing: 10) {
                         settingRow("Workspace", store.repoRootURL?.path ?? "Not connected")
@@ -647,10 +650,89 @@ private struct SettingsWorkspaceView: View {
                         .disabled(store.isLoading)
                     }
                 }
+                Panel("External Tools") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if let report = store.toolAvailability {
+                            ForEach(report.tools) { status in
+                                toolStatusRow(status)
+                            }
+                        } else {
+                            Text("Tool status is not available from this service.")
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(Self.externalToolsFooter)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button {
+                            Task { await store.refreshToolAvailability() }
+                        } label: {
+                            Label("Re-check Tools", systemImage: "arrow.clockwise")
+                        }
+                        .help("Probe the optional tools again without running them")
+                    }
+                }
             }
             .padding(24)
         }
         .background(Color(nsColor: .textBackgroundColor))
+    }
+
+    private static let externalToolsFooter = ToolProbe.finderPathNotice + " Paths shown here are not redacted; CLI and feedback output are."
+
+    private func toolStateLabel(_ state: ToolState) -> String {
+        switch state {
+        case .found: return "Found"
+        case .missing: return "Missing"
+        case .overrideInvalid: return "Override invalid"
+        case .builtIn: return "Built-in"
+        }
+    }
+
+    private func toolStatusRow(_ status: ToolStatus) -> some View {
+        let stateLabel = toolStateLabel(status.state)
+        let installLine = toolInstallLine(status)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(status.tool.displayName)
+                Spacer(minLength: 12)
+                Text(stateLabel)
+            }
+            HStack(alignment: .firstTextBaseline) {
+                Text(status.environmentVariable ?? "-")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 12)
+                Text(status.summary)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+                    .textSelection(.enabled)
+            }
+            if let installLine {
+                Text(installLine)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(toolAccessibilityLabel(status, stateLabel: stateLabel, installLine: installLine))
+    }
+
+    private func toolInstallLine(_ status: ToolStatus) -> String? {
+        switch status.state {
+        case .missing:
+            return "Install: \(status.installHint)"
+        case .overrideInvalid:
+            let variable = status.environmentVariable ?? "the override"
+            return "Fix or unset \(variable), or: \(status.installHint)"
+        case .found, .builtIn:
+            return nil
+        }
+    }
+
+    private func toolAccessibilityLabel(_ status: ToolStatus, stateLabel: String, installLine: String?) -> String {
+        let base = "\(status.tool.displayName): \(stateLabel). \(status.summary)"
+        guard let installLine else { return base }
+        return "\(base). \(installLine)"
     }
 
     private func settingRow(_ label: String, _ value: String) -> some View {

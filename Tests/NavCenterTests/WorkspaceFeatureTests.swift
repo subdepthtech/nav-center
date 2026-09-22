@@ -97,7 +97,7 @@ final class WorkspaceFeatureTests: XCTestCase {
         XCTAssertTrue(report.workspace.requiredDirectoriesMissing.isEmpty)
         XCTAssertFalse(json.contains("/Users/tucker"))
         XCTAssertEqual(report.workspace.path, "<workspace>")
-        XCTAssertEqual(report.recentLogs, ["Opened <home>/private/resume.pdf"])
+        XCTAssertTrue(report.recentLogs.isEmpty)
     }
 
     func testFeedbackDiagnosticsIncludesToolTableWithRedactedPaths() throws {
@@ -129,7 +129,7 @@ final class WorkspaceFeatureTests: XCTestCase {
         XCTAssertFalse(json.contains("/Users/synthetic"))
     }
 
-    func testRedactedDiagnosticsKeepRedactedLogLines() throws {
+    func testRedactedDiagnosticsOmitLogLinesAndUnredactedKeepsThem() throws {
         let temp = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: temp) }
         let home = temp.appendingPathComponent("Users/synthetic", isDirectory: true).standardizedFileURL
@@ -148,9 +148,8 @@ final class WorkspaceFeatureTests: XCTestCase {
         let redacted = diagnostics.report(redact: true)
         let raw = diagnostics.report(redact: false)
 
-        XCTAssertEqual(redacted.recentLogs, ["Opened <home>/secret.txt"])
+        XCTAssertEqual(redacted.recentLogs, [])
         XCTAssertEqual(raw.recentLogs, [line])
-        XCTAssertFalse(redacted.recentLogs.joined().contains(home.path))
     }
 
     private func makeTempDirectory() throws -> URL {

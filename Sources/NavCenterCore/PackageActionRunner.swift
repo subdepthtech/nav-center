@@ -72,14 +72,18 @@ public final class PackageActionRunner {
         update(entry)
 
         let started = Date()
-        if commandHook == nil, let failure = unresolvedToolMessage(action: action, command: &command) {
-            entry.status = "failed"
-            entry.exitCode = nil
-            entry.message = failure
-            entry.completedAt = ISO8601DateFormatter().string(from: Date())
-            entry.durationMs = Int(Date().timeIntervalSince(started) * 1000)
+        if commandHook == nil {
+            if let failure = unresolvedToolMessage(action: action, command: &command) {
+                entry.status = "failed"
+                entry.exitCode = nil
+                entry.message = failure
+                entry.completedAt = ISO8601DateFormatter().string(from: Date())
+                entry.durationMs = Int(Date().timeIntervalSince(started) * 1000)
+                update(entry)
+                return entry
+            }
+            entry.command = resolvedDisplay(command)
             update(entry)
-            return entry
         }
         do {
             if action == "ats-scan" {
@@ -138,6 +142,12 @@ public final class PackageActionRunner {
         let display: String
         let outputPath: String
         let environment: [String: String]
+    }
+
+    private func resolvedDisplay(_ command: BuiltCommand) -> String {
+        let invocation = ([command.executable] + command.args).joined(separator: " ")
+        guard command.environment["NAV_CENTER_SKIP_VAULT_SYNC"] == "1" else { return invocation }
+        return "NAV_CENTER_SKIP_VAULT_SYNC=1 \(invocation)"
     }
 
     private struct ATSFileSnapshot: Equatable {
@@ -357,21 +367,9 @@ public final class PackageActionRunner {
             let tool: ExternalTool = action == "refresh-resume" ? .exportTool : .atsim
             let actionName = action == "refresh-resume" ? "Resume PDF refresh" : "ATS scan"
             let resolved = ToolProbe.resolve(tool, configuration: toolProbe)
-            let reported: ToolStatus
             if resolved.state == .missing || resolved.state == .overrideInvalid {
-                reported = resolved
-            } else {
-                reported = ToolStatus(
-                    tool: tool,
-                    state: .missing,
-                    resolvedPath: nil,
-                    source: nil,
-                    environmentVariable: tool.environmentVariable,
-                    installHint: tool.installHint,
-                    summary: "missing"
-                )
+                return ToolProbe.missingToolMessage(resolved, action: actionName)
             }
-            return ToolProbe.missingToolMessage(reported, action: actionName)
         }
         return action == "refresh-resume" ? "Resume PDF refresh failed with exit code \(exitCode)." : "ATS scan failed with exit code \(exitCode)."
     }

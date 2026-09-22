@@ -723,23 +723,19 @@ final class NativeCodexBridge {
         ]
     }
 
-    private static func resolveCodexCommand() -> String {
-        let env = ProcessInfo.processInfo.environment
-        if let explicit = env["DASHBOARD_CODEX_BIN"], !explicit.isEmpty {
-            return explicit
-        }
-        for dir in (env["PATH"] ?? "").split(separator: ":").map(String.init) {
-            let candidate = "\(dir)/codex"
-            if FileManager.default.isExecutableFile(atPath: candidate) {
-                return candidate
+    static func resolveCodexCommand(configuration: ToolProbeConfiguration = .init()) -> String {
+        let resolved = ToolProbe.resolve(.codex, configuration: configuration)
+        switch resolved.state {
+        case .found:
+            return resolved.resolvedPath ?? "codex"
+        case .overrideInvalid:
+            return resolved.resolvedPath ?? configuration.environment["DASHBOARD_CODEX_BIN"] ?? "codex"
+        case .missing, .builtIn:
+            if let override = configuration.environment["DASHBOARD_CODEX_BIN"], !override.isEmpty {
+                return override
             }
+            return "codex"
         }
-        for candidate in ["/opt/homebrew/bin/codex", "/usr/local/bin/codex", "\(NSHomeDirectory())/.local/bin/codex"] {
-            if FileManager.default.isExecutableFile(atPath: candidate) {
-                return candidate
-            }
-        }
-        return "codex"
     }
 
     private static func codexAccount(_ value: Any?) -> CodexAccount? {

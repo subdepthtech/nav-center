@@ -135,16 +135,15 @@ public struct ToolAvailabilityReport: Codable, Equatable, Sendable {
     }
 
     public func redacted(homeDirectory: URL) -> ToolAvailabilityReport {
-        let homes = Self.homePrefixes(homeDirectory)
-        return ToolAvailabilityReport(tools: tools.map { status in
+        ToolAvailabilityReport(tools: tools.map { status in
             ToolStatus(
                 tool: status.tool,
                 state: status.state,
-                resolvedPath: status.resolvedPath.map { Self.scrub($0, homes: homes) },
+                resolvedPath: status.resolvedPath.map { PathRedactor.redact($0, homeDirectory: homeDirectory) },
                 source: status.source,
                 environmentVariable: status.environmentVariable,
                 installHint: status.installHint,
-                summary: Self.scrub(status.summary, homes: homes)
+                summary: PathRedactor.redact(status.summary, homeDirectory: homeDirectory)
             )
         })
     }
@@ -157,19 +156,6 @@ public struct ToolAvailabilityReport: Codable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(tools)
-    }
-
-    private static func homePrefixes(_ homeDirectory: URL) -> [String] {
-        let prefixes = [homeDirectory.standardizedFileURL.path, homeDirectory.path].map { path -> String in
-            path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
-        }
-        return Array(Set(prefixes)).filter { !$0.isEmpty && $0 != "/" }.sorted { $0.count > $1.count }
-    }
-
-    private static func scrub(_ value: String, homes: [String]) -> String {
-        homes.reduce(value) { partial, home in
-            partial.replacingOccurrences(of: home, with: "<home>")
-        }
     }
 }
 
@@ -209,10 +195,13 @@ public enum ToolProbe {
             return status(tool, state: .builtIn, resolvedPath: nil, source: nil, summary: "built-in")
         }
         if let override, override.contains("/") {
+            let variable = tool.environmentVariable ?? "override"
+            if !override.hasPrefix("/") {
+                return status(tool, state: .overrideInvalid, resolvedPath: override, source: nil, summary: "\(variable) must be an absolute path")
+            }
             if configuration.isExecutableRegularFile(override) {
                 return status(tool, state: .found, resolvedPath: override, source: .environment, summary: foundSummary(override, .environment))
             }
-            let variable = tool.environmentVariable ?? "override"
             return status(tool, state: .overrideInvalid, resolvedPath: override, source: nil, summary: "\(variable) is not an executable file")
         }
 
@@ -226,14 +215,16 @@ public enum ToolProbe {
             return status(tool, state: .missing, resolvedPath: nil, source: nil, summary: "missing")
         }
 
-        for directory in pathDirectories(configuration.environment["PATH"] ?? "") {
+        for directory in pathDirectories(configuration.environment["PATH"] ?? "") where directory.hasPrefix("/") {
             let candidate = joined(directory, command)
+            guard candidate.hasPrefix("/") else { continue }
             if configuration.isExecutableRegularFile(candidate) {
                 return status(tool, state: .found, resolvedPath: candidate, source: .path, summary: foundSummary(candidate, .path))
             }
         }
-        for directory in configuration.fallbackDirectories {
+        for directory in configuration.fallbackDirectories where directory.hasPrefix("/") {
             let candidate = joined(directory, command)
+            guard candidate.hasPrefix("/") else { continue }
             if configuration.isExecutableRegularFile(candidate) {
                 return status(tool, state: .found, resolvedPath: candidate, source: .fallback, summary: foundSummary(candidate, .fallback))
             }

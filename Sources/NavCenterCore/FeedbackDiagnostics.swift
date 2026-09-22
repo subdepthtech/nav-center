@@ -64,7 +64,7 @@ public final class FeedbackDiagnostics {
             appVersion: appVersion,
             macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
             workspace: workspace,
-            recentLogs: recentLogs(redactor: redactor),
+            recentLogs: redact ? [] : recentLogs(redactor: redactor),
             tools: redact ? availability.redacted(homeDirectory: homeDirectory) : availability
         )
     }
@@ -121,21 +121,36 @@ public final class FeedbackDiagnostics {
     }
 }
 
+public enum PathRedactor {
+    public static func redact(_ value: String, homeDirectory: URL) -> String {
+        var redacted = value
+        for prefix in homePrefixes(homeDirectory) {
+            redacted = redacted.replacingOccurrences(of: prefix, with: "<home>")
+        }
+        if let username = homeDirectory.lastPathComponent.split(separator: "/").last, !username.isEmpty {
+            redacted = redacted.replacingOccurrences(of: String(username), with: "<user>")
+        }
+        return redacted.replacingOccurrences(
+            of: #"/Users/[^/\s\"]+"#,
+            with: "<home>",
+            options: .regularExpression
+        )
+    }
+
+    private static func homePrefixes(_ homeDirectory: URL) -> [String] {
+        let prefixes = [homeDirectory.standardizedFileURL.path, homeDirectory.path].map { path -> String in
+            path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
+        }
+        return Array(Set(prefixes)).filter { !$0.isEmpty && $0 != "/" }.sorted { $0.count > $1.count }
+    }
+}
+
 private struct Redactor {
     let homeDirectory: URL
     let enabled: Bool
 
     func redact(_ value: String) -> String {
         guard enabled else { return value }
-        var redacted = value.replacingOccurrences(of: homeDirectory.path, with: "<home>")
-        if let username = homeDirectory.lastPathComponent.split(separator: "/").last, !username.isEmpty {
-            redacted = redacted.replacingOccurrences(of: String(username), with: "<user>")
-        }
-        redacted = redacted.replacingOccurrences(
-            of: #"/Users/[^/\s\"]+"#,
-            with: "<home>",
-            options: .regularExpression
-        )
-        return redacted
+        return PathRedactor.redact(value, homeDirectory: homeDirectory)
     }
 }

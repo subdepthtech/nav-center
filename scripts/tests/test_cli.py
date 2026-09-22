@@ -137,6 +137,28 @@ class CLITests(unittest.TestCase):
         after = sorted(path.relative_to(self.root).as_posix() for path in self.root.rglob("*"))
         self.assertEqual(before, after)
 
+    def test_feedback_diagnostics_explicit_redact_wins_over_opt_in(self):
+        self.assertEqual(self.run_cli("init-workspace", "--workspace", self.workspace).returncode, 0)
+        log = self.workspace / "logs" / "example.log"
+        log.write_text("Authorization: Bearer SYNTHETIC_TOKEN_NOT_REAL\n")
+        for args in (
+            ("feedback-diagnostics", "--redact", "--include-unredacted", "--workspace", self.workspace),
+            ("feedback-diagnostics", "--include-unredacted", "--redact", "--workspace", self.workspace),
+        ):
+            with self.subTest(args=args):
+                result = self.run_cli(*args)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                payload = json.loads(result.stdout)
+                self.assertEqual(payload["workspace"]["path"], "<workspace>")
+                self.assertEqual(payload["recentLogs"], [])
+                self.assertNotIn("SYNTHETIC_TOKEN", result.stdout)
+                self.assertNotIn(str(self.workspace), result.stdout)
+        opened = self.run_cli("feedback-diagnostics", "--include-unredacted", "--workspace", self.workspace)
+        self.assertEqual(opened.returncode, 0, opened.stderr)
+        opened_payload = json.loads(opened.stdout)
+        self.assertEqual(opened_payload["workspace"]["path"], str(self.workspace))
+        self.assertIn("SYNTHETIC_TOKEN_NOT_REAL", opened.stdout)
+
     def workspace_listing(self):
         return sorted(str(path.relative_to(self.workspace)) for path in self.workspace.rglob("*"))
 

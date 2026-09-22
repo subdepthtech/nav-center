@@ -49,6 +49,10 @@ public final class MasterResumeStore {
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw NavCenterError.invalidPath("Master resume content cannot be empty.")
         }
+        let rubyStatus = ToolProbe.resolve(.ruby, configuration: toolProbe)
+        guard rubyStatus.state == .found, let ruby = rubyStatus.resolvedPath else {
+            throw NavCenterError.invalidPath(ToolProbe.missingToolMessage(rubyStatus, action: "Master resume save"))
+        }
 
         let url = masterResumeURL
         try PathSafety.assertExistingRegularFile(url, inside: repoRoot, label: "master resume")
@@ -62,7 +66,7 @@ public final class MasterResumeStore {
         try PathSafety.assertWritablePath(candidate, inside: workDir, label: "master resume candidate")
         try PathSafety.atomicWrite(Data(content.utf8), to: candidate, inside: repoRoot, label: "master resume candidate")
         do {
-            try validateYAML(candidate)
+            try validateYAML(candidate, ruby: ruby)
         } catch {
             try? FileManager.default.removeItem(at: candidate)
             throw error
@@ -91,11 +95,7 @@ public final class MasterResumeStore {
         repoRoot.appendingPathComponent("master-resumes/master_primary.yaml")
     }
 
-    private func validateYAML(_ url: URL) throws {
-        let status = ToolProbe.resolve(.ruby, configuration: toolProbe)
-        guard status.state == .found, let ruby = status.resolvedPath else {
-            throw NavCenterError.invalidPath(ToolProbe.missingToolMessage(status, action: "Master resume save"))
-        }
+    private func validateYAML(_ url: URL, ruby: String) throws {
         let result = try ProcessRunner.run(
             ruby,
             ["-e", Self.yamlValidator, url.path],

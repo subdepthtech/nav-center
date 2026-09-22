@@ -30,6 +30,7 @@ protocol DashboardServicing: AnyObject, Sendable {
     func startCodexLogin(type: String) throws -> CodexLoginStartResponse
     func sendCodexChat(_ payload: CodexChatRequest) throws -> CodexChatResponse
     func cancelCodexTurn() throws
+    func fetchToolAvailability() throws -> ToolAvailabilityReport
 }
 
 enum MasterResumeSaveOutcome: Equatable {
@@ -39,6 +40,7 @@ enum MasterResumeSaveOutcome: Equatable {
 
 extension DashboardServicing {
     func cancelCodexTurn() throws { throw DashboardAPIError.serverUnavailable("This service does not support cancellation.") }
+    func fetchToolAvailability() throws -> ToolAvailabilityReport { .empty }
     func fetchActions(packageName: String) -> ActionLogResponse {
         fetchActions(packageName: packageName, limit: 20)
     }
@@ -85,6 +87,7 @@ final class DashboardStore: ObservableObject {
     @Published var importedDocuments: [ImportedDocument] = []
     @Published var codexErrorMessage: String?
     @Published var errorMessage: String?
+    @Published var toolAvailability: ToolAvailabilityReport?
     @Published var repoRootURL: URL?
     @Published var applicationSearch = ""
     @Published var dataWarningMessage: String?
@@ -94,6 +97,7 @@ final class DashboardStore: ObservableObject {
         masterResumeContent != (masterResumeSnapshot?.content ?? "")
     }
 
+    let appVersion: String = FeedbackDiagnostics.buildVersion
     private let service: DashboardServicing
     private var codexConversations: [String: CodexPackageConversation] = [:]
     private let serviceQueue = DispatchQueue(label: "nav-center.local-services", qos: .userInitiated)
@@ -150,6 +154,17 @@ final class DashboardStore: ObservableObject {
     func bootstrap() async {
         repoRootURL = service.repoRoot
         await refresh()
+        await refreshToolAvailability()
+    }
+
+    func refreshToolAvailability() async {
+        do {
+            toolAvailability = try await background { try $0.fetchToolAvailability() }
+        } catch is CancellationError {
+            return
+        } catch {
+            toolAvailability = nil
+        }
     }
 
     func refreshAll() async throws {
