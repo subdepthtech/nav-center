@@ -565,6 +565,67 @@ final class UXReadinessTests: XCTestCase {
         XCTAssertEqual(store.summary?.totals.packages, 0)
     }
 
+    func testCleanupReviewRowsListEveryCandidateWithoutTruncation() {
+        let candidates = (1...12).map { index -> PackageCleanupCandidate in
+            let day = String(format: "2020-01-%02d", index)
+            let name = "\(day)_Synthetic_Engineer"
+            return PackageCleanupCandidate(
+                packageName: name,
+                packageDate: day,
+                applicationDir: "applications/\(name)",
+                trackerID: index.isMultiple(of: 2) ? "id-\(index)" : nil,
+                status: index.isMultiple(of: 2) ? "Submitted" : "Package Only",
+                isTracked: index.isMultiple(of: 2)
+            )
+        }
+        let preview = PackageCleanupPreview(
+            today: "2099-04-01",
+            cutoffDate: "2099-03-25",
+            olderThanDays: 7,
+            candidates: candidates,
+            fingerprint: "synthetic-twelve"
+        )
+        let rows = CleanupReviewModel.rows(for: preview)
+        XCTAssertEqual(rows.count, 12)
+        XCTAssertEqual(rows.map(\.packageName), candidates.map(\.packageName))
+        XCTAssertEqual(rows.map(\.id), candidates.map(\.packageName))
+    }
+
+    func testCleanupReviewRowsMarkTrackedCandidates() {
+        let tracked = PackageCleanupCandidate(
+            packageName: "2020-01-01_Tracked_Engineer",
+            packageDate: "2020-01-01",
+            applicationDir: "applications/2020-01-01_Tracked_Engineer",
+            trackerID: "tracked-id",
+            status: "Submitted",
+            isTracked: true
+        )
+        let packageOnly = PackageCleanupCandidate(
+            packageName: "2020-01-02_Only_Engineer",
+            packageDate: "2020-01-02",
+            applicationDir: "applications/2020-01-02_Only_Engineer",
+            trackerID: nil,
+            status: "Package Only",
+            isTracked: false
+        )
+        let preview = PackageCleanupPreview(
+            today: "2099-04-01",
+            cutoffDate: "2099-03-25",
+            olderThanDays: 7,
+            candidates: [tracked, packageOnly],
+            fingerprint: "synthetic-labels"
+        )
+        let rows = CleanupReviewModel.rows(for: preview)
+        XCTAssertEqual(rows.map(\.accessibilityLabel), [
+            "2020-01-01_Tracked_Engineer, Submitted, dated 2020-01-01, tracked",
+            "2020-01-02_Only_Engineer, Package Only, dated 2020-01-02, package only",
+        ])
+        XCTAssertTrue(rows[0].accessibilityLabel.hasSuffix(", tracked"))
+        XCTAssertTrue(rows[1].accessibilityLabel.hasSuffix(", package only"))
+        XCTAssertTrue(rows[0].accessibilityLabel.contains("dated \(tracked.packageDate)"))
+        XCTAssertTrue(rows[1].accessibilityLabel.contains("dated \(packageOnly.packageDate)"))
+    }
+
     private func workspace() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("nav-center-ux-tests-" + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)

@@ -121,8 +121,7 @@ struct ContentView: View {
 
 private struct PackagesWorkspaceView: View {
     @EnvironmentObject private var store: DashboardStore
-    @State private var showingCleanupConfirmation = false
-    @State private var cleanupToRemove: PackageCleanupPreview?
+    @State private var cleanupReview: CleanupReviewRequest?
 
     private var packagedApplications: [ApplicationRecord] {
         store.applications.filter { !$0.packageName.isEmpty }
@@ -153,15 +152,45 @@ private struct PackagesWorkspaceView: View {
             .padding(24)
         }
         .background(Color(nsColor: .textBackgroundColor))
-        .confirmationDialog("Remove packages older than 7 days?", isPresented: $showingCleanupConfirmation, titleVisibility: .visible) {
-            Button("Remove \(cleanupToRemove?.candidates.count ?? 0) Packages", role: .destructive) {
-                let preview = cleanupToRemove
-                Task { await store.applyPackageCleanup(olderThanDays: 7, deleteTracked: true, confirmedPreview: preview) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes package folders and matching tracker rows after writing a local backup and manifest.")
+        .sheet(item: $cleanupReview) { request in
+            cleanupReviewSheet(request)
         }
+    }
+
+    private func cleanupReviewSheet(_ request: CleanupReviewRequest) -> some View {
+        let rows = CleanupReviewModel.rows(for: request.preview)
+        let tracked = rows.filter(\.isTracked).count
+        let packageOnly = rows.count - tracked
+        let count = rows.count
+        return VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Remove \(count) package\(count == 1 ? "" : "s") older than \(request.preview.olderThanDays) days?")
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Dated before \(request.preview.cutoffDate) · \(tracked) tracked, \(packageOnly) package-only")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("This removes package folders and matching tracker rows after writing a local backup and manifest.")
+                .fixedSize(horizontal: false, vertical: true)
+
+            cleanupCandidateList(rows, maxHeight: 320)
+
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    cleanupReview = nil
+                }
+                .keyboardShortcut(.cancelAction)
+                Button("Remove \(count) Packages", role: .destructive) {
+                    Task { await store.applyPackageCleanup(olderThanDays: request.preview.olderThanDays, deleteTracked: true, confirmedPreview: request.preview) }
+                    cleanupReview = nil
+                }
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 480, alignment: .leading)
     }
 
     private var cleanupPanel: some View {
@@ -186,37 +215,47 @@ private struct PackagesWorkspaceView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if !cleanupCandidates.isEmpty {
-                    VStack(spacing: 0) {
-                        ForEach(Array(cleanupCandidates.prefix(8))) { candidate in
-                            HStack(spacing: 10) {
-                                Image(systemName: candidate.isTracked ? "checklist" : "folder")
-                                    .foregroundStyle(candidate.isTracked ? .blue : .secondary)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(candidate.packageName)
-                                        .lineLimit(1)
-                                    Text(candidate.status)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer(minLength: 10)
-                                Text(candidate.packageDate)
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 7)
-                            if candidate.id != cleanupCandidates.prefix(8).last?.id {
-                                Divider()
-                            }
-                        }
-                    }
-
-                    if cleanupCandidates.count > 8 {
-                        Text("+ \(cleanupCandidates.count - 8) more")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                if let preview = store.cleanupPreview, !preview.candidates.isEmpty {
+                    cleanupCandidateList(CleanupReviewModel.rows(for: preview), maxHeight: 280)
                 }
+            }
+        }
+    }
+
+    private func cleanupCandidateList(_ rows: [CleanupReviewRow], maxHeight: CGFloat) -> some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                ForEach(rows) { row in
+                    cleanupCandidateRow(row, showsDivider: row.id != rows.last?.id)
+                }
+            }
+        }
+        .frame(maxHeight: maxHeight)
+    }
+
+    private func cleanupCandidateRow(_ row: CleanupReviewRow, showsDivider: Bool) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: row.isTracked ? "checklist" : "folder")
+                    .foregroundStyle(row.isTracked ? .blue : .secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(row.packageName)
+                        .lineLimit(1)
+                    Text(row.status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 10)
+                Text(row.packageDate)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 7)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(row.accessibilityLabel)
+
+            if showsDivider {
+                Divider()
             }
         }
     }
@@ -252,8 +291,9 @@ private struct PackagesWorkspaceView: View {
             .help("Preview packages older than 7 days")
 
             Button(role: .destructive) {
-                cleanupToRemove = store.cleanupPreview
-                showingCleanupConfirmation = true
+                if let preview = store.cleanupPreview {
+                    cleanupReview = CleanupReviewRequest(preview: preview)
+                }
             } label: {
                 Label("Remove", systemImage: "trash")
             }
