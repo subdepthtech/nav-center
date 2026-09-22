@@ -8,7 +8,7 @@ Use [SETUP.md](SETUP.md) for current completion and blockers, [TESTING.md](TESTI
 | --- | --- | --- |
 | Repository | Gitleaks 8.30.1 | Current source and full Git history, with redacted findings |
 | Workflows | actionlint 1.7.12; zizmor 1.30.1 auditor mode | YAML/expression/shell checks and workflow security |
-| Native | CI: Xcode 26.3 / Swift 6.2.3; local toolchain recorded in SETUP.md | Full builds, XCTest, real coverage, CLI and sanitizers |
+| Native | CI: Xcode 26.3 / Swift 6.2.4 ([observed artifact](https://github.com/subdepthtech/nav-center/actions/runs/35733117014)); local toolchain recorded in SETUP.md | Full builds, XCTest, real coverage, CLI and sanitizers |
 | Formatting | Apple's official swift-format from the selected Xcode | Read-only style baseline; advisory during adoption |
 | Swift lint | SwiftLint 0.65.1 | Five correctness rules; no duplicate whitespace rules; advisory baseline |
 | Security | Existing CodeQL default setup, secret scanning, push protection | Preserve Swift/Actions extended analysis and repository secret controls |
@@ -66,7 +66,7 @@ The separate Sonar workflow needs only `contents: read` and `actions: read`; the
 
 ## Sonar calibration and eventual gate
 
-Record the first analyzed main SHA/date and Sonar analysis link in SETUP.md. Confirm source/test counts, the coverage text import, covered/executable lines, absent CLI coverage, and SwiftLint finding counts against `analysis-summary.json`. Scanner exit success is not proof that the server imported a report or accepted a quality gate. Review unexpected exclusions and security hotspots explicitly. Swift 6.2.3 is within documented Sonar Cloud support through 6.3; local Swift 6.4 analysis is not established by that support statement. [Swift support](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/languages/swift).
+Record the first analyzed main SHA/date and Sonar analysis link in SETUP.md. Confirm source/test counts, the coverage text import, covered/executable lines, absent CLI coverage, and SwiftLint finding counts against `analysis-summary.json`. Scanner exit success is not proof that the server imported a report or accepted a quality gate. Review unexpected exclusions and security hotspots explicitly. The observed CI compiler, Swift 6.2.4, is within documented Sonar Cloud support through 6.3; local Swift 6.4 analysis is not established by that support statement. [Swift support](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/languages/swift).
 
 Begin with the standard quality gate visible but nonrequired. After the native imports and useful findings are confirmed, define new code relative to the recorded baseline/reference branch, inspect a representative changed-code analysis, and verify that a deliberate gate failure is visible. Record the selected gate and thresholds. Only then require the actual Sonar check name observed on a tested PR; the initial main-only workflow must first be extended for secure PR analysis. Never require a check that this workflow cannot emit for PRs. Existing debt remains an explicit backlog rather than a fabricated clean baseline. [Quality-gate operation](https://docs.sonarsource.com/sonarqube-cloud/standards/managing-quality-gates/introduction-to-quality-gates).
 
