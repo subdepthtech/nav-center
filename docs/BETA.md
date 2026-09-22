@@ -78,6 +78,17 @@ Feedback drafts should not include private resume content, exact private file pa
 
 ## Known Beta Limits
 
+Accepted versions are observed per run. The evidence link below is the intended record; do not treat a tool as accepted until that run and its results are recorded.
+
+| Integration | Accepted versions (observed) | When absent | How it is tested |
+| --- | --- | --- | --- |
+| atsim | Recorded by the integration lane; see [integration-acceptance.md](setup-evidence/beta-0.1.0-beta.1/integration-acceptance.md). | ATS Scan fails with: “ATS scan needs atsim … Set NAV_CENTER_ATSIM_BIN …” | Local and manual CI integration lane. |
+| Pandoc | Recorded by the integration lane; see [integration-acceptance.md](setup-evidence/beta-0.1.0-beta.1/integration-acceptance.md). | Export Artifacts is disabled with the reason “Export needs Pandoc, pdftotext, and Google Chrome. See Settings > External Tools.” | Local and manual CI integration lane. |
+| pdftotext (Poppler) | Recorded by the integration lane; see [integration-acceptance.md](setup-evidence/beta-0.1.0-beta.1/integration-acceptance.md). | Export Artifacts is disabled with the reason “Export needs Pandoc, pdftotext, and Google Chrome. See Settings > External Tools.” | Local and manual CI integration lane. |
+| Google Chrome | Recorded by the integration lane; see [integration-acceptance.md](setup-evidence/beta-0.1.0-beta.1/integration-acceptance.md). | Export Artifacts is disabled with the reason “Export needs Pandoc, pdftotext, and Google Chrome. See Settings > External Tools.” | Local and manual CI integration lane. |
+| Ruby (system) | Recorded by the integration lane; see [integration-acceptance.md](setup-evidence/beta-0.1.0-beta.1/integration-acceptance.md). | Master resume save fails before writing: “Master resume save needs Ruby, which was not found on PATH. Reinstall Xcode Command Line Tools or use the Ruby included with macOS at /usr/bin/ruby.” | Stubbed unit tests. |
+| Codex CLI | Recorded by the integration lane; see [integration-acceptance.md](setup-evidence/beta-0.1.0-beta.1/integration-acceptance.md). | Codex panel refuses to start: “Codex needs Codex CLI … Set DASHBOARD_CODEX_BIN …” | Manual Codex live acceptance checklist in [TESTING.md](TESTING.md#codex-live-acceptance-manual). |
+
 - PDF and DOCX import keeps originals and creates review notes; rich extraction may require manual paste/review.
 - The Homebrew tap is an alternative to the GitHub prerelease DMG. The `0.1.0-beta` cask's caveat claimed notarization that its release notes said was still pending; casks from `0.1.0-beta.1` on are generated only from accepted notarization evidence.
 - The nightly job-package automation is created paused by default.
