@@ -19,7 +19,7 @@ REPO = Path(__file__).resolve().parents[2]
 SBOM_SPEC = importlib.util.spec_from_file_location("export_sbom", REPO / "scripts/export-sbom.py")
 SBOM = importlib.util.module_from_spec(SBOM_SPEC)
 SBOM_SPEC.loader.exec_module(SBOM)
-STUB = r'''import json, os, pathlib, stat, sys
+STUB = r'''import json, os, pathlib, shutil, stat, sys
 name = pathlib.Path(sys.argv[0]).name
 args = sys.argv[1:]
 event = name
@@ -42,6 +42,19 @@ if name == "sips": pathlib.Path(args[args.index("--out") + 1]).write_bytes(b"syn
 if name == "iconutil": pathlib.Path(args[args.index("-o") + 1]).write_bytes(b"synthetic ICNS")
 if name == "lipo": print(os.environ.get("RELEASE_LIPO_ARCH", os.uname().machine))
 if name == "hdiutil" and args[0] == "create": pathlib.Path(args[-1]).write_bytes(b"synthetic DMG")
+if name == "hdiutil" and args[:1] == ["attach"] and "-mountpoint" in args:
+    source = os.environ.get("FAKE_MOUNT_SOURCE")
+    if source:
+        mount = pathlib.Path(args[args.index("-mountpoint") + 1])
+        mount.mkdir(parents=True, exist_ok=True)
+        for child in pathlib.Path(source).iterdir():
+            destination = mount / child.name
+            if child.is_dir():
+                shutil.copytree(child, destination)
+            else:
+                shutil.copy2(child, destination)
+if name == "hdiutil" and args[:1] == ["detach"]:
+    sys.exit(0)
 if name == "xcrun" and args[:2] == ["notarytool", "submit"]:
     key = pathlib.Path(args[args.index("--key") + 1])
     assert stat.S_IMODE(key.stat().st_mode) == 0o600
@@ -371,24 +384,71 @@ class ReleaseScriptsTests(unittest.TestCase):
         self.assert_ok(self.run_script("notarize-dmg.sh", str(image), extra=self.credentials()))
         self.assertEqual(sidecar.read_text().split()[0], hashlib.sha256(image.read_bytes()).hexdigest())
 
+    def accepted_notary(self, name="accepted.notary.json", status="Accepted"):
+        path = self.root / name
+        path.write_text(json.dumps({"status": status}) + "\n")
+        return path
+
     def test_cask_guards_each_supported_architecture(self):
+        notary = self.accepted_notary()
         for architecture in ("arm64", "x86_64"):
             path = self.root / f"{architecture}.rb"
             url = f"https://example.org/NavCenter-9.8.7-beta.2-macos-{architecture}.dmg"
-            self.assert_ok(self.run_script("update-homebrew-cask.sh", "9.8.7-beta.2", url, "a" * 64, architecture, str(path)))
+            self.assert_ok(self.run_script(
+                "update-homebrew-cask.sh", "9.8.7-beta.2", url, "a" * 64, architecture, str(path), str(notary),
+            ))
             self.assertIn(f"depends_on arch: :{architecture}", path.read_text())
             syntax = subprocess.run(["/usr/bin/ruby", "-c", str(path)], capture_output=True, text=True)
             self.assert_ok(syntax)
         self.assertEqual(self.events(), [])
 
     def test_cask_rejects_mismatched_or_unsigned_assets_before_writing(self):
+        notary = self.accepted_notary()
         path = self.root / "invalid.rb"
         for url in ("https://example.org/NavCenter-9.8.7-beta.2-macos-x86_64.dmg",
                     "https://example.org/NavCenter-9.8.7-beta.2-macos-arm64-unsigned.dmg",
                     'https://example.org/"#{system("false")}/NavCenter-9.8.7-beta.2-macos-arm64.dmg'):
-            result = self.run_script("update-homebrew-cask.sh", "9.8.7-beta.2", url, "a" * 64, "arm64", str(path))
+            result = self.run_script(
+                "update-homebrew-cask.sh", "9.8.7-beta.2", url, "a" * 64, "arm64", str(path), str(notary),
+            )
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse(path.exists())
+
+    def test_cask_caveat_requires_accepted_notary_evidence(self):
+        notary = self.accepted_notary(status="accepted")
+        path = self.root / "nav-center.rb"
+        url = "https://example.org/NavCenter-9.8.7-beta.2-macos-arm64.dmg"
+        self.assert_ok(self.run_script(
+            "update-homebrew-cask.sh", "9.8.7-beta.2", url, "a" * 64, "arm64", str(path), str(notary),
+        ))
+        text = path.read_text()
+        self.assertIn(
+            'caveats "Nav Center #{version} is Developer ID signed, notarized by Apple, and stapled. Beta: arm64 only."',
+            text,
+        )
+        self.assertIn('"~/Library/Application Support/Nav Center"', text)
+        self.assertIn('"~/Library/Preferences/com.subdepthtech.navcenter.plist"', text)
+        self.assertIn('"~/Library/Saved Application State/com.subdepthtech.navcenter.savedState"', text)
+        self.assertIn('depends_on macos: ">= :ventura"', text)
+        syntax = subprocess.run(["/usr/bin/ruby", "-c", str(path)], capture_output=True, text=True)
+        self.assert_ok(syntax)
+
+    def test_cask_refuses_when_notary_evidence_missing(self):
+        path = self.root / "nav-center.rb"
+        url = "https://example.org/NavCenter-9.8.7-beta.2-macos-arm64.dmg"
+        rejected = self.root / "rejected.notary.json"
+        rejected.write_text('{"status": "Invalid"}\n')
+        malformed = self.root / "malformed.notary.json"
+        malformed.write_text("{not json\n")
+        missing = self.root / "missing.notary.json"
+        for notary in (missing, rejected, malformed):
+            with self.subTest(notary=notary.name):
+                result = self.run_script(
+                    "update-homebrew-cask.sh", "9.8.7-beta.2", url, "a" * 64, "arm64", str(path), str(notary),
+                )
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn(str(notary), result.stderr)
+                self.assertFalse(path.exists())
 
     def test_workflow_upload_follows_required_gates_and_uses_least_privilege(self):
         release = (REPO / ".github/workflows/beta-release.yml").read_text()
@@ -449,6 +509,165 @@ class ReleaseScriptsTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("PENDING UPSTREAM CONFIRMATION", result.stderr)
         self.assertFalse(any(event["tool"] in ("swift", "codesign", "xcrun", "hdiutil") for event in self.events()))
+
+    def test_workflow_mount_step_verifies_notices_and_version_strings(self):
+        release = (REPO / ".github/workflows/beta-release.yml").read_text()
+        marker = "- name: Verify the packaged app from a read-only mount"
+        self.assertEqual(release.count(marker), 1)
+        step = release.split(marker, 1)[1].split("\n      - name:", 1)[0]
+        env, run = step.split("run:", 1)
+        self.assertIn("scripts/verify-release-artifact.sh", run)
+        self.assertIn("--expect-version", run)
+        self.assertIn("--expect-build", run)
+        self.assertIn('"$NAV_CENTER_VERSION"', run)
+        self.assertIn('"$NAV_CENTER_BUILD"', run)
+        self.assertIn("NAV_CENTER_VERSION: ${{ inputs.version }}", env)
+        self.assertIn("NAV_CENTER_BUILD: ${{ inputs.build }}", env)
+        self.assertNotIn("${{", run)
+        self.assertLess(run.index("scripts/verify-release-artifact.sh"), run.index("shasum -a 256 -c"))
+
+    def stage_mount(self, version="9.8.7-beta.2", build="42", short=None, nav=None, license_text="Synthetic license.\n", notices_text="Synthetic notices.\n"):
+        mount = self.root / "mount-fixture"
+        if mount.exists():
+            shutil.rmtree(mount)
+        contents = mount / "Nav Center.app" / "Contents"
+        contents.mkdir(parents=True)
+        payload = {
+            "CFBundleShortVersionString": version.split("-", 1)[0] if short is None else short,
+            "CFBundleVersion": build,
+            "NavCenterVersion": version if nav is None else nav,
+        }
+        with (contents / "Info.plist").open("wb") as stream:
+            plistlib.dump(payload, stream, fmt=plistlib.FMT_XML)
+        if license_text is not None:
+            (mount / "LICENSE").write_text(license_text)
+        if notices_text is not None:
+            (mount / "THIRD_PARTY_NOTICES.md").write_text(notices_text)
+        return mount
+
+    def stage_artifact(self, name="NavCenter-9.8.7-beta.2-macos-arm64.dmg", sidecar_name=None, status="Accepted", body=b"synthetic signed image"):
+        image = self.root / name
+        image.write_bytes(body)
+        digest = hashlib.sha256(body).hexdigest()
+        record = name if sidecar_name is None else sidecar_name
+        Path(str(image) + ".sha256").write_text(f"{digest}  {record}\n")
+        if status is not None:
+            Path(str(image) + ".notary.json").write_text(json.dumps({"status": status}) + "\n")
+        return image
+
+    def run_verifier(self, image, *args, mount=None):
+        self.trace.unlink(missing_ok=True)
+        extra = {"FAKE_MOUNT_SOURCE": str(mount)} if mount is not None else None
+        return self.run_script("verify-release-artifact.sh", str(image), *args, extra=extra)
+
+    def test_verifier_passes_complete_artifact_and_checks_mounted_app(self):
+        image = self.stage_artifact()
+        mount = self.stage_mount()
+        result = self.run_verifier(
+            image, "--expect-version", "9.8.7-beta.2", "--expect-build", "42", mount=mount,
+        )
+        self.assert_ok(result)
+        self.assertNotIn("\nFAIL ", "\n" + result.stdout)
+        self.assertNotIn("\nMISSING ", "\n" + result.stdout)
+        events = self.events()
+        attach = [event for event in events if event["tool"] == "hdiutil" and event["args"][:1] == ["attach"]]
+        self.assertEqual(len(attach), 1)
+        self.assertIn("-readonly", attach[0]["args"])
+        self.assertIn("-nobrowse", attach[0]["args"])
+        mountpoint = attach[0]["args"][attach[0]["args"].index("-mountpoint") + 1]
+        app = str(Path(mountpoint) / "Nav Center.app")
+        deep = [
+            event for event in events
+            if event["tool"] == "codesign" and "--deep" in event["args"] and "--strict" in event["args"]
+        ]
+        self.assertEqual(len(deep), 1)
+        self.assertEqual(deep[0]["args"][-1], app)
+        execute = [
+            event for event in events
+            if event["tool"] == "spctl" and event["args"][event["args"].index("-t") + 1] == "execute"
+        ]
+        self.assertEqual(len(execute), 1)
+        self.assertEqual(execute[0]["args"][-1], app)
+        self.assertTrue(any(event["tool"] == "hdiutil" and event["args"][:1] == ["detach"] for event in events))
+        self.assertFalse(Path(mountpoint).exists())
+
+    def test_verifier_accepts_path_prefixed_sidecar_with_matching_basename(self):
+        name = "NavCenter-0.1.0-beta-macos-arm64.dmg"
+        image = self.stage_artifact(name=name, sidecar_name=f"dist/{name}")
+        mount = self.stage_mount(version="0.1.0-beta", build="1")
+        result = self.run_verifier(image, "--expect-version", "0.1.0-beta", "--expect-build", "1", mount=mount)
+        self.assert_ok(result)
+        self.assertIn("PASS checksum sidecar", result.stdout)
+
+    def test_verifier_rejects_sidecar_naming_another_file(self):
+        image = self.stage_artifact()
+        mount = self.stage_mount()
+        digest = hashlib.sha256(image.read_bytes()).hexdigest()
+        sidecar = Path(str(image) + ".sha256")
+        for record in ("other.dmg", "dist/other.dmg"):
+            with self.subTest(record=record):
+                sidecar.write_text(f"{digest}  {record}\n")
+                result = self.run_verifier(
+                    image, "--expect-version", "9.8.7-beta.2", "--expect-build", "42", mount=mount,
+                )
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("FAIL checksum sidecar:", result.stdout)
+                self.assertIn(record, result.stdout)
+
+    def test_verifier_fails_when_notices_missing_from_image(self):
+        image = self.stage_artifact()
+        mount = self.stage_mount(license_text=None, notices_text=None)
+        result = self.run_verifier(
+            image, "--expect-version", "9.8.7-beta.2", "--expect-build", "42", mount=mount,
+        )
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("FAIL LICENSE:", result.stdout)
+        self.assertIn("FAIL THIRD_PARTY_NOTICES.md:", result.stdout)
+
+    def test_verifier_fails_on_version_or_build_mismatch(self):
+        image = self.stage_artifact()
+        cases = (
+            {"short": "1.2.3", "check": "CFBundleShortVersionString"},
+            {"nav": "9.8.7-beta.9", "check": "NavCenterVersion"},
+            {"build": "7", "check": "CFBundleVersion"},
+        )
+        for case in cases:
+            with self.subTest(check=case["check"]):
+                mount = self.stage_mount(
+                    short=case.get("short"),
+                    nav=case.get("nav"),
+                    build=case.get("build", "42"),
+                )
+                result = self.run_verifier(
+                    image, "--expect-version", "9.8.7-beta.2", "--expect-build", "42", mount=mount,
+                )
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn(f"FAIL {case['check']}:", result.stdout)
+
+    def test_verifier_rejects_unsigned_name_before_tools_run(self):
+        missing = self.run_verifier(self.root / "absent.dmg")
+        self.assertEqual(missing.returncode, 66, missing.stdout + missing.stderr)
+        usage = self.run_script("verify-release-artifact.sh")
+        self.assertEqual(usage.returncode, 64, usage.stdout + usage.stderr)
+        unsigned = self.root / "NavCenter-9.8.7-beta.2-macos-arm64-unsigned.dmg"
+        unsigned.write_bytes(b"synthetic unsigned image")
+        Path(str(unsigned) + ".sha256").write_text("ab" * 32 + "  " + unsigned.name + "\n")
+        result = self.run_verifier(unsigned)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("FAIL name contract:", result.stdout)
+        self.assertIn("unsigned", result.stdout)
+        self.assertEqual(self.events(), [])
+
+    def test_app_version_is_single_sourced(self):
+        versions = json.loads((REPO / "scripts/tool-versions.json").read_text())
+        app_version = versions["app_version"]
+        plugin = json.loads((REPO / "plugins/nav-center/.codex-plugin/plugin.json").read_text())
+        self.assertEqual(plugin["version"], app_version)
+        build_script = (REPO / "scripts/build-and-run.sh").read_text()
+        self.assertIn(f'VERSION="${{NAV_CENTER_VERSION:-{app_version}}}"', build_script)
+        changelog = (REPO / "CHANGELOG.md").read_text().splitlines()
+        headings = [line for line in changelog if line.startswith("## ")]
+        self.assertTrue(headings[0].startswith(f"## {app_version}"))
 
 
 class VendorNoticeTests(unittest.TestCase):

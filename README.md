@@ -96,12 +96,20 @@ scripts/install-codex-skills.sh
 
 ## Homebrew Install
 
-Beta builds are distributed through the public `subdepthtech/nav-center` Homebrew tap:
+Download the DMG and its `.sha256` from the GitHub prerelease, then verify the download:
+
+```sh
+shasum -a 256 -c NavCenter-<version>-macos-arm64.dmg.sha256
+```
+
+The public `subdepthtech/nav-center` Homebrew tap is an alternative install of that same prerelease:
 
 ```sh
 brew tap subdepthtech/nav-center
 brew install --cask nav-center
 ```
+
+The `0.1.0-beta` cask's caveat claimed notarization that its release notes said was still pending; casks from `0.1.0-beta.1` on are generated only from accepted notarization evidence.
 
 Do not pass the `git@github.com:subdepthtech/homebrew-nav-center.git` SSH URL unless the tester has SSH access configured for that repo. The one-argument tap command above uses GitHub over HTTPS.
 
@@ -129,6 +137,8 @@ Remove the app and local Nav Center support files with:
 ```sh
 brew uninstall --cask --zap nav-center
 ```
+
+`brew uninstall --cask --zap` removes `~/Library/Application Support/Nav Center` and AppKit window state (`~/Library/Preferences/com.subdepthtech.navcenter.plist`, `~/Library/Saved Application State/com.subdepthtech.navcenter.savedState`). A vault mirror directory you chose (`NAV_CENTER_VAULT_DIR`) is yours and is never removed.
 
 ## Release
 

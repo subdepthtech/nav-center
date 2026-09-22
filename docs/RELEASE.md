@@ -50,7 +50,7 @@ The manual **Beta Release** workflow requires version and build inputs and uses 
 - `DEVELOPER_ID_CERTIFICATE_PASSWORD`: its password.
 - The Developer ID identity and three App Store Connect variables listed above as environment secrets.
 
-The workflow fetches complete history, runs hygiene and regression checks, imports the certificate into a temporary keychain, then builds and verifies the artifact. It also mounts the final DMG read-only and checks the packaged app. Temporary certificate/keychain material is removed even after failure. Checkout credentials are not persisted; the workflow has only `contents: read`, pins action commits, and never creates a GitHub Release or pushes a tap. Upload is conditional on all preceding gates succeeding.
+The workflow fetches complete history, runs hygiene and regression checks, imports the certificate into a temporary keychain, then builds and verifies the artifact. It also mounts the final DMG read-only and checks the packaged app with `scripts/verify-release-artifact.sh`. Temporary certificate/keychain material is removed even after failure. Checkout credentials are not persisted; the workflow has only `contents: read`, pins action commits, and never creates a GitHub Release or pushes a tap. Upload is conditional on all preceding gates succeeding.
 
 The separate CI workflow runs debug/release builds, XCTest with coverage, address/thread sanitizers, shell syntax, and offline release-script regressions. CI passing alone is not a distribution approval. Current/history secret scans do not replace review for private resume, tracker, screenshot, or workspace data.
 
@@ -60,7 +60,7 @@ Build-provenance attestation is a follow-on for the first authorized signed cand
 
 ## Homebrew cask
 
-After the authorized final DMG is uploaded, use its final checksum and explicit architecture:
+After the authorized final DMG is uploaded, use its final checksum, explicit architecture, and accepted notarization evidence:
 
 ```sh
 scripts/update-homebrew-cask.sh \
@@ -68,10 +68,24 @@ scripts/update-homebrew-cask.sh \
   "https://github.com/subdepthtech/nav-center/releases/download/v0.1.0-beta.1/NavCenter-0.1.0-beta.1-macos-arm64.dmg" \
   "<final-64-character-sha256>" \
   arm64 \
-  /path/to/homebrew-tap/Casks/nav-center.rb
+  /path/to/homebrew-tap/Casks/nav-center.rb \
+  /path/to/NavCenter-0.1.0-beta.1-macos-arm64.dmg.notary.json
 ```
 
-The generator rejects malformed values, unsigned asset names, and mismatched version/architecture URLs. It declares the hardware requirement, installs the app and CLI, and removes app support/preferences only through explicit `brew uninstall --zap`. It only writes the requested cask; run `ruby -c <cask-file>` and, where already available, `brew style <cask-file>` separately. Tap publication and install/upgrade/uninstall validation require separate authorization.
+The generator rejects malformed values, unsigned asset names, and mismatched version/architecture URLs. It also refuses, before writing, when the notary JSON is missing, is not JSON, or its `status` is not `Accepted`. An accepted result adds a caveat that the cask is Developer ID signed, notarized by Apple, and stapled, and that this beta is arm64 only. It declares the hardware requirement, installs the app and CLI, and removes the workspace directory plus AppKit window-state files only through explicit `brew uninstall --zap`. It only writes the requested cask; run `ruby -c <cask-file>` and, where already available, `brew style <cask-file>` separately. Tap publication and install/upgrade/uninstall validation require separate authorization.
+
+## Beta release runbook (maintainer, explicit authorization per step)
+
+Nothing in this runbook is automated or run by assistants without explicit authorization. An `-unsigned.dmg` is never distributable. Testers install from the GitHub prerelease DMG; the Homebrew tap is the alternative and is updated only after that prerelease exists.
+
+1. Dispatch `beta-release.yml` on main with `version` and `build`, and approve the `release` environment.
+2. Download the exact workflow artifact.
+3. Run `scripts/verify-release-artifact.sh <dmg> --expect-version <v> --expect-build <n>` on the downloaded bytes.
+4. `git tag -s v<version> <source sha from BUILD.txt>`, then push the tag. The source SHA is the first line of `BUILD.txt`.
+5. `gh release create v<version> --prerelease --verify-tag` with the DMG, `.sha256`, `.notary.json` and `BUILD.txt`, and notes (support matrix, known limits, how to send `navcenterctl feedback-diagnostics` output).
+6. `scripts/update-homebrew-cask.sh <version> <release dmg url> <sha256> arm64 <tap>/Casks/nav-center.rb <dmg>.notary.json`.
+7. Open a tap PR.
+8. After it merges, run `brew install --cask` on the clean machine (docs/BETA-VERIFICATION-CHECKLIST.md, when it exists).
 
 ## Required proof before sharing
 

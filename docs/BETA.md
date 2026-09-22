@@ -4,6 +4,21 @@ Nav Center beta builds are local-first macOS builds for trusted testers. The app
 
 ## Install
 
+Apple silicon (arm64) only in this beta; Intel is not supported.
+
+Download the DMG and its `.sha256` from the GitHub prerelease, then verify the download:
+
+```sh
+shasum -a 256 -c NavCenter-<version>-macos-arm64.dmg.sha256
+```
+
+The public `subdepthtech/nav-center` Homebrew tap is an alternative install of that same prerelease:
+
+```sh
+brew tap subdepthtech/nav-center
+brew install --cask nav-center
+```
+
 1. Open the beta DMG.
 2. Drag `Nav Center.app` to `/Applications`.
 3. Launch the app.
@@ -62,7 +77,7 @@ Feedback drafts should not include private resume content, exact private file pa
 ## Known Beta Limits
 
 - PDF and DOCX import keeps originals and creates review notes; rich extraction may require manual paste/review.
-- Homebrew installs use the public `subdepthtech/nav-center` tap.
+- The Homebrew tap is an alternative to the GitHub prerelease DMG. The `0.1.0-beta` cask's caveat claimed notarization that its release notes said was still pending; casks from `0.1.0-beta.1` on are generated only from accepted notarization evidence.
 - The nightly job-package automation is created paused by default.
 - Codex package edits require explicit user confirmation.
 
@@ -70,9 +85,14 @@ Feedback drafts should not include private resume content, exact private file pa
 
 1. Quit Nav Center.
 2. Move `/Applications/Nav Center.app` to Trash.
-3. Optional data removal:
+3. Optional data removal. The workspace directory is `~/Library/Application Support/Nav Center`:
 
 ```sh
 rm -rf "$HOME/Library/Application Support/Nav Center"
 rm -f "$HOME/Library/Preferences/com.subdepthtech.navcenter.plist"
+rm -rf "$HOME/Library/Saved Application State/com.subdepthtech.navcenter.savedState"
 ```
+
+`~/Library/Preferences/com.subdepthtech.navcenter.plist` and `~/Library/Saved Application State/com.subdepthtech.navcenter.savedState` are AppKit window state only; may not exist.
+
+A vault mirror directory you chose (NAV_CENTER_VAULT_DIR) is yours and is never removed.
