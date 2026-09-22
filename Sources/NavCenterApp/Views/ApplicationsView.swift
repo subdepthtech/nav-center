@@ -110,7 +110,15 @@ struct ApplicationsView: View {
                 .accessibilityLabel("Dismiss status message")
             }
             .padding(12)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+            .background {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: .windowBackgroundColor))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
+                    }
+                    .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
+            }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Status update: \(statusBanner)")
         }

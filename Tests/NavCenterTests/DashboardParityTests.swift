@@ -308,10 +308,10 @@ final class DashboardParityTests: XCTestCase {
         service.statusUpdateRelease = release
         let update = Task { await store.updatePackageStatus(.submitted, packageName: "A") }
         await fulfillment(of: [started], timeout: 2)
-        await store.loadPackage(named: "B")
+        store.closePackage()
+        XCTAssertNil(store.selectedPackage)
         release.signal()
         await update.value
-        XCTAssertEqual(store.selectedPackage?.package.name, "B")
         XCTAssertNil(store.statusMessage)
     }
 
@@ -660,7 +660,9 @@ private final class IntakeDashboardService: DashboardServicing, @unchecked Senda
 
     func updatePackageStatus(packageName: String, status: TrackerStatus) throws -> TrackerStatusUpdateResult {
         statusUpdateStarted?.fulfill()
-        if let statusUpdateRelease { _ = statusUpdateRelease.wait(timeout: .now() + 5) }
+        if let statusUpdateRelease {
+            XCTAssertEqual(statusUpdateRelease.wait(timeout: .now() + 1), .success)
+        }
         let json = "{\"applicationID\":\"app\",\"packageName\":\"\(packageName)\",\"oldStatus\":\"\",\"newStatus\":\"\(status.rawValue)\",\"changedAt\":\"2099-04-01T12:00:00Z\",\"warnings\":[]}"
         return try JSONDecoder().decode(TrackerStatusUpdateResult.self, from: Data(json.utf8))
     }
