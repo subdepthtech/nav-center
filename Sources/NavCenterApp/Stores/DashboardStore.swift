@@ -216,7 +216,6 @@ final class DashboardStore: ObservableObject {
 
     func loadPackage(named packageName: String) async {
         saveActiveCodexConversation()
-        if selectedPackage?.package.name != packageName { statusMessage = nil }
         let revision = UUID()
         selectionRevision = revision
         beginLoading()
@@ -227,6 +226,7 @@ final class DashboardStore: ObservableObject {
             }
             guard selectionRevision == revision, !Task.isCancelled else { return }
             selectedPackage = result.0
+            statusMessage = nil
             selectedApplication = result.0.application
             restoreCodexConversation(for: packageName)
             actions = result.1.actions
@@ -292,12 +292,16 @@ final class DashboardStore: ObservableObject {
     func updatePackageStatus(_ action: TrackerStatusQuickAction, packageName: String) async {
         guard !packageName.isEmpty else { errorMessage = DashboardAPIError.missingPackageName.localizedDescription; return }
         guard !isUpdatingStatus else { return }
+        let revision = selectionRevision
+        let selectedName = selectedPackage?.package.name
         statusMessage = nil
         isUpdatingStatus = true
         defer { isUpdatingStatus = false }
         do {
             let result = try await background { try $0.updatePackageStatus(packageName: packageName, status: action.trackerStatus) }
-            statusMessage = (["\(result.packageName): \(result.newStatus)"] + result.warnings).joined(separator: " ")
+            if selectionRevision == revision, selectedPackage?.package.name == selectedName {
+                statusMessage = (["\(result.packageName): \(result.newStatus)"] + result.warnings).joined(separator: " ")
+            }
             try await refreshAll()
         } catch { errorMessage = error.localizedDescription }
     }
@@ -376,16 +380,20 @@ final class DashboardStore: ObservableObject {
         do {
             let result = try await background { try $0.createPackage(from: trimmed) }
             intakeMessage = "Created package: \(result.packageName)"
-            try await refreshAll()
+            do { try await refreshAll() }
+            catch { errorMessage = error.localizedDescription }
             if selectionRevision == revision { await loadPackage(named: result.packageName) }
             if runCodexAutomation {
+                if !isCodexLoading {
+                    intakeMessage = "Created package: \(result.packageName). Codex is building the resume and prep files; watch the Codex panel."
+                }
                 let outcome = await sendCodexMessage(codexPackageBuildPrompt(packageName: result.packageName, request: trimmed), allowEdits: true, confirmed: true, packageName: result.packageName)
                 lastCodexAutomationOutcome = outcome
                 switch outcome {
                 case .started:
-                    intakeMessage = "Created package: \(result.packageName). Codex is building the resume and prep files; watch the Codex panel."
+                    intakeMessage = "Created package: \(result.packageName). Codex finished building the resume and prep files; review them in the package."
                 case .busy:
-                    intakeMessage = "Created package: \(result.packageName). Codex automation did not start because another Codex turn is running. Open the package and send the build prompt from the Codex panel."
+                    intakeMessage = "Created package: \(result.packageName). Codex automation did not start because Codex is busy with another request. Open the package and send the build prompt from the Codex panel."
                 case .rejected(let reason), .failed(let reason):
                     intakeMessage = "Created package: \(result.packageName). Codex automation failed: \(reason)"
                 }
@@ -548,7 +556,10 @@ final class DashboardStore: ObservableObject {
             if selectedPackage?.package.name == name {
                 codexErrorMessage = response.ok ? nil : response.message.nonEmptyFallback("Codex could not complete the turn.")
             }
-            if allowEdits, response.ok { try await refreshPackageIfCurrent(name, revision: selectionRevision) }
+            if allowEdits, response.ok {
+                do { try await refreshPackageIfCurrent(name, revision: selectionRevision) }
+                catch { errorMessage = error.localizedDescription }
+            }
             return response.ok ? .started : .rejected(response.message.nonEmptyFallback("Codex could not complete the turn."))
         } catch {
             conversation.messages.append(CodexChatMessage(role: .system, text: error.localizedDescription))

@@ -1050,14 +1050,20 @@ private struct PackageRailContent: View {
                     PackageStatusButtons(packageName: packageRecord.name)
                     Text("Status History")
                         .font(.headline)
-                    if let events = store.selectedPackage?.statusEvents, !events.isEmpty {
+                    if let historyError = store.selectedPackage?.statusHistoryError {
+                        Text(historyError)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if let events = store.selectedPackage?.statusEvents, !events.isEmpty {
                         ForEach(Array(events.prefix(10).enumerated()), id: \.offset) { _, event in
                             Text(event.oldStatus.isEmpty
                                 ? "\(event.changedAt) · Set to \(event.newStatus)"
                                 : "\(event.changedAt) · \(event.oldStatus) → \(event.newStatus)")
                                 .font(.caption)
                                 .accessibilityElement(children: .ignore)
-                                .accessibilityLabel("\(event.newStatus) on \(event.changedAt), previously \(event.oldStatus)")
+                                .accessibilityLabel(event.oldStatus.isEmpty
+                                    ? "\(event.newStatus) on \(event.changedAt)"
+                                    : "\(event.newStatus) on \(event.changedAt), previously \(event.oldStatus)")
                         }
                     } else {
                         Text("No status changes recorded.")

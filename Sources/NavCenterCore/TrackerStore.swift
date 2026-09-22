@@ -150,7 +150,7 @@ public final class TrackerStore {
         let sql = """
         select application_id as applicationID, old_status as oldStatus, new_status as newStatus, changed_at as changedAt
         from status_events where application_id = \(SQLiteSupport.quote(applicationID))
-        order by changed_at desc, rowid desc limit \(SQLiteSupport.quote(String(boundedLimit)));
+        order by changed_at desc, rowid desc limit \(boundedLimit);
         """
         return try SQLiteSupport.jsonRows(dbPath: dbPath, repoRoot: repoRoot, sql: sql).map { row in
             TrackerStatusEvent(

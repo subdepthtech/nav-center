@@ -262,9 +262,68 @@ final class DashboardParityTests: XCTestCase {
         await store.createPackageFromIntake(intakeRequest(), runCodexAutomation: true)
         let name = "2099-04-01_Paste_Corp_Product_Security_Engineer"
         XCTAssertEqual(store.lastCodexAutomationOutcome, .busy)
-        XCTAssertEqual(store.intakeMessage, "Created package: \(name). Codex automation did not start because another Codex turn is running. Open the package and send the build prompt from the Codex panel.")
+        XCTAssertEqual(store.intakeMessage, "Created package: \(name). Codex automation did not start because Codex is busy with another request. Open the package and send the build prompt from the Codex panel.")
         release.signal()
         _ = await turn.value
+    }
+
+    @MainActor
+    func testIntakeShowsBuildingThenFinishedForStartedAutomation() async {
+        let service = IntakeDashboardService()
+        let store = DashboardStore(service: service)
+        let started = expectation(description: "Codex turn started")
+        let release = DispatchSemaphore(value: 0)
+        service.chatStarted = started
+        service.chatRelease = release
+        let intake = Task { await store.createPackageFromIntake(intakeRequest(), runCodexAutomation: true) }
+        await fulfillment(of: [started], timeout: 2)
+        let name = "2099-04-01_Paste_Corp_Product_Security_Engineer"
+        XCTAssertEqual(store.intakeMessage, "Created package: \(name). Codex is building the resume and prep files; watch the Codex panel.")
+        XCTAssertNil(store.lastCodexAutomationOutcome)
+        release.signal()
+        await intake.value
+        XCTAssertEqual(store.intakeMessage, "Created package: \(name). Codex finished building the resume and prep files; review them in the package.")
+        XCTAssertEqual(store.lastCodexAutomationOutcome, .started)
+    }
+
+    @MainActor
+    func testCodexOutcomeStaysStartedWhenFollowUpRefreshFails() async {
+        let service = IntakeDashboardService()
+        let store = DashboardStore(service: service)
+        await store.loadPackage(named: "Existing")
+        service.failPackageFetchAfterChat = true
+        let outcome = await store.sendCodexMessage("Build synthetic files", allowEdits: true, confirmed: true)
+        XCTAssertEqual(outcome, .started)
+        XCTAssertEqual(store.errorMessage, "Synthetic package refresh failure")
+    }
+
+    @MainActor
+    func testStatusMessageIsNotAppliedToAnotherPackageAfterSelectionChanges() async {
+        let service = IntakeDashboardService()
+        let store = DashboardStore(service: service)
+        await store.loadPackage(named: "A")
+        let started = expectation(description: "Status update started")
+        let release = DispatchSemaphore(value: 0)
+        service.statusUpdateStarted = started
+        service.statusUpdateRelease = release
+        let update = Task { await store.updatePackageStatus(.submitted, packageName: "A") }
+        await fulfillment(of: [started], timeout: 2)
+        await store.loadPackage(named: "B")
+        release.signal()
+        await update.value
+        XCTAssertEqual(store.selectedPackage?.package.name, "B")
+        XCTAssertNil(store.statusMessage)
+    }
+
+    @MainActor
+    func testIntakeRunsAutomationWhenDashboardRefreshFails() async {
+        let service = IntakeDashboardService()
+        service.summaryError = DashboardAPIError.serverUnavailable("Synthetic refresh failure")
+        let store = DashboardStore(service: service)
+        await store.createPackageFromIntake(intakeRequest(), runCodexAutomation: true)
+        XCTAssertEqual(store.lastCodexAutomationOutcome, .started)
+        XCTAssertEqual(store.errorMessage, "Synthetic refresh failure")
+        XCTAssertTrue(store.intakeMessage?.contains("Codex finished building") == true)
     }
 
     @MainActor
@@ -275,7 +334,7 @@ final class DashboardParityTests: XCTestCase {
         await store.createPackageFromIntake(intakeRequest(), runCodexAutomation: true)
         XCTAssertEqual(service.createdRequests.count, 1)
         XCTAssertEqual(store.lastCodexAutomationOutcome, .failed("Synthetic Codex failure"))
-        XCTAssertTrue(store.intakeMessage?.hasPrefix("Created package: 2099-04-01_Paste_Corp_Product_Security_Engineer. Codex automation failed:") == true)
+        XCTAssertEqual(store.intakeMessage, "Created package: 2099-04-01_Paste_Corp_Product_Security_Engineer. Codex automation failed: Synthetic Codex failure")
     }
 
     @MainActor
@@ -485,6 +544,11 @@ private final class IntakeDashboardService: DashboardServicing, @unchecked Senda
     var chatStarted: XCTestExpectation?
     var chatRelease: DispatchSemaphore?
     var chatError: Error?
+    var failPackageFetchAfterChat = false
+    var chatCompleted = false
+    var summaryError: Error?
+    var statusUpdateStarted: XCTestExpectation?
+    var statusUpdateRelease: DispatchSemaphore?
     var statusEvents: [PackageStatusEvent] = []
 
     func createPackage(from request: JobDescriptionIntakeRequest) throws -> CreateApplicationResult {
@@ -516,7 +580,8 @@ private final class IntakeDashboardService: DashboardServicing, @unchecked Senda
     }
 
     func fetchSummary() throws -> DashboardSummary {
-        DashboardSummary(
+        if let summaryError { throw summaryError }
+        return DashboardSummary(
             generatedAt: "2099-04-01T12:00:00Z",
             localOnly: true,
             totals: DashboardTotals(
@@ -557,7 +622,10 @@ private final class IntakeDashboardService: DashboardServicing, @unchecked Senda
     }
 
     func fetchPackage(named packageName: String) throws -> PackageResponse {
-        PackageResponse(
+        if failPackageFetchAfterChat, chatCompleted {
+            throw DashboardAPIError.serverUnavailable("Synthetic package refresh failure")
+        }
+        return PackageResponse(
             generatedAt: "2099-04-01T12:00:00Z",
             package: ApplicationPackage(
                 name: packageName,
@@ -591,6 +659,8 @@ private final class IntakeDashboardService: DashboardServicing, @unchecked Senda
     }
 
     func updatePackageStatus(packageName: String, status: TrackerStatus) throws -> TrackerStatusUpdateResult {
+        statusUpdateStarted?.fulfill()
+        if let statusUpdateRelease { _ = statusUpdateRelease.wait(timeout: .now() + 5) }
         let json = "{\"applicationID\":\"app\",\"packageName\":\"\(packageName)\",\"oldStatus\":\"\",\"newStatus\":\"\(status.rawValue)\",\"changedAt\":\"2099-04-01T12:00:00Z\",\"warnings\":[]}"
         return try JSONDecoder().decode(TrackerStatusUpdateResult.self, from: Data(json.utf8))
     }
@@ -640,6 +710,7 @@ private final class IntakeDashboardService: DashboardServicing, @unchecked Senda
         chatStarted?.fulfill()
         if let chatRelease { _ = chatRelease.wait(timeout: .now() + 5) }
         if let chatError { throw chatError }
+        chatCompleted = true
         return CodexChatResponse(
             ok: true,
             threadId: payload.threadId ?? "thread_1",

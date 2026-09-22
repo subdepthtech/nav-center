@@ -286,7 +286,31 @@ struct PackageResponse: Codable {
     var package: ApplicationPackage
     var application: ApplicationRecord?
     var statusEvents: [PackageStatusEvent]
+    var statusHistoryError: String? = nil
     var sources: DashboardSources
+
+    private enum CodingKeys: String, CodingKey {
+        case generatedAt, package, application, statusEvents, statusHistoryError, sources
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        generatedAt = try values.decode(String.self, forKey: .generatedAt)
+        package = try values.decode(ApplicationPackage.self, forKey: .package)
+        application = try values.decodeIfPresent(ApplicationRecord.self, forKey: .application)
+        statusEvents = try values.decode([PackageStatusEvent].self, forKey: .statusEvents)
+        statusHistoryError = try values.decodeIfPresent(String.self, forKey: .statusHistoryError)
+        sources = try values.decode(DashboardSources.self, forKey: .sources)
+    }
+
+    init(generatedAt: String, package: ApplicationPackage, application: ApplicationRecord?, statusEvents: [PackageStatusEvent], statusHistoryError: String? = nil, sources: DashboardSources) {
+        self.generatedAt = generatedAt
+        self.package = package
+        self.application = application
+        self.statusEvents = statusEvents
+        self.statusHistoryError = statusHistoryError
+        self.sources = sources
+    }
 }
 
 struct PackageStatusEvent: Codable, Equatable {

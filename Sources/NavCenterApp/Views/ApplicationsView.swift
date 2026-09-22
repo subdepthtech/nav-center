@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ApplicationsView: View {
     @EnvironmentObject private var store: DashboardStore
@@ -61,7 +62,6 @@ struct ApplicationsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                statusConfirmationBanner
                 filterBar
                 applicationsTable
             }
@@ -69,6 +69,11 @@ struct ApplicationsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(nsColor: .textBackgroundColor))
+        .overlay(alignment: .top) {
+            statusConfirmationBanner
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
         .onChange(of: store.applicationSearch) { _ in resetPage() }
         .onChange(of: statusFilter) { _ in resetPage() }
         .onChange(of: locationFilter) { _ in resetPage() }
@@ -76,7 +81,12 @@ struct ApplicationsView: View {
         .onChange(of: store.statusMessage) { message in
             statusBannerDismissal?.cancel()
             statusBanner = message
-            guard message != nil else { return }
+            guard let message else { return }
+            NSAccessibility.post(
+                element: NSApp as Any,
+                notification: .announcementRequested,
+                userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.high.rawValue]
+            )
             statusBannerDismissal = Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
                 guard !Task.isCancelled else { return }

@@ -289,6 +289,13 @@ final class DashboardModelsTests: XCTestCase {
         XCTAssertEqual(package.package.tabs.first?.primaryFile?.relativePath, "posting.md")
         XCTAssertEqual(package.package.artifactSummary.byFormat["json"], 1)
         XCTAssertTrue(package.statusEvents.isEmpty)
+        XCTAssertNil(package.statusHistoryError)
+        let withHistoryError = packageJson.replacingOccurrences(
+            of: "\"statusEvents\": []",
+            with: "\"statusEvents\": [], \"statusHistoryError\": \"Status history could not be read. Package details are still available.\""
+        )
+        let historyErrorPackage = try decoder.decode(PackageResponse.self, from: Data(withHistoryError.utf8))
+        XCTAssertEqual(historyErrorPackage.statusHistoryError, "Status history could not be read. Package details are still available.")
         let withEvent = packageJson.replacingOccurrences(
             of: "\"statusEvents\": []",
             with: "\"statusEvents\": [{\"oldStatus\":\"Submitted\",\"newStatus\":\"Interview\",\"changedAt\":\"2026-05-06T13:00:00Z\"}]"

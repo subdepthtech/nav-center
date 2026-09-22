@@ -80,6 +80,10 @@ final class NativeDashboardService: @unchecked Sendable {
     }
 
     func fetchPackage(named packageName: String) throws -> PackageResponse {
+        try fetchPackage(named: packageName, includeStatusHistory: true)
+    }
+
+    private func fetchPackage(named packageName: String, includeStatusHistory: Bool) throws -> PackageResponse {
         let data = try loadData()
         guard let package = data.packages.first(where: { $0.name == packageName }) else {
             throw DashboardAPIError.missingPackageName
@@ -87,11 +91,14 @@ final class NativeDashboardService: @unchecked Sendable {
         let application = data.applications.first(where: { $0.packageName == packageName })
         var sources = data.sources
         var events: [PackageStatusEvent] = []
-        if let application, application.source.tracker {
+        var statusHistoryError: String?
+        if includeStatusHistory, let application, application.source.tracker {
             do {
                 events = try packageStatusEvents(applicationID: application.id)
             } catch {
-                sources.tracker.warnings.append("Status history could not be read. Package details are still available.")
+                let warning = "Status history could not be read. Package details are still available."
+                statusHistoryError = warning
+                sources.tracker.warnings.append(warning)
             }
         }
         return PackageResponse(
@@ -99,6 +106,7 @@ final class NativeDashboardService: @unchecked Sendable {
             package: package,
             application: application,
             statusEvents: events,
+            statusHistoryError: statusHistoryError,
             sources: sources
         )
     }
@@ -110,7 +118,7 @@ final class NativeDashboardService: @unchecked Sendable {
     }
 
     func fetchFilePreview(packageName: String, file: String) throws -> PackageFilePreviewResponse {
-        let package = try fetchPackage(named: packageName).package
+        let package = try fetchPackage(named: packageName, includeStatusHistory: false).package
         guard let packageFile = package.files.first(where: { $0.relativePath == file }), packageFile.previewable else {
             throw DashboardAPIError.serverUnavailable("File preview is not available: \(file)")
         }
