@@ -8,7 +8,7 @@ The previously unpublished hardening and tooling baseline is on main through [PR
 
 Main protection and full-SHA Actions enforcement are active and have been read back. Claude's repository allowlist startup failure was corrected, including its nested Bun action; a subsequent human-gated review run completed successfully. Sonar onboarding remains optional and deferred to the account owner.
 
-[PR #4](https://github.com/subdepthtech/nav-center/pull/4) merged the exact-directory tracker correction. [PR #5](https://github.com/subdepthtech/nav-center/pull/5) updates the pinned Claude and Sonar actions. [PR #6](https://github.com/subdepthtech/nav-center/pull/6) supplies recoverable first-use tracker initialization and this closeout record. Evidence below identifies the tested source candidates; final integration is checked again on the merged main revision, with CI results retained on that revision. No application feature, integration or release gate is accepted merely because its setup is present.
+[PR #4](https://github.com/subdepthtech/nav-center/pull/4) merged the exact-directory tracker correction. [PR #5](https://github.com/subdepthtech/nav-center/pull/5) updates the pinned Claude and Sonar actions. [PR #6](https://github.com/subdepthtech/nav-center/pull/6) supplies recoverable first-use tracker initialization and this closeout record. [PR #7](https://github.com/subdepthtech/nav-center/pull/7) accepts the Xcode 27 SwiftPM test-bundle name in the coverage exporter; its merge commit `45293d38c7ceb69630444050aaa73afdd507f290` is the final closeout head of `main`. Evidence below identifies the tested source candidates; final integration is checked again on the merged main revision, with CI results retained on that revision. No application feature, integration or release gate is accepted merely because its setup is present.
 
 ## Repository controls
 
@@ -61,5 +61,7 @@ Development checks do not complete these acceptance gates:
 - Select and test the supported macOS and architecture matrix. The declared macOS 13 minimum is not established by local macOS 27 or hosted macOS 15 results.
 - Under separate release authorization, configure Apple signing credentials securely and validate a candidate's nested app/CLI and outer DMG signatures, notarization/stapling, Gatekeeper behavior, source/toolchain/checksum lineage and final-artifact provenance.
 - Verify a downloaded candidate on a clean device, including install, first launch, update, uninstall and data preservation. Retain results in the [public release checklist](PUBLIC_RELEASE_CHECKLIST.md); do not infer acceptance from successful build or upload.
+
+The work packages, sequence and acceptance evidence for these gates are in [MACOS-BETA-MILESTONE.md](MACOS-BETA-MILESTONE.md).
 
 CodeRabbit and additional analysis services remain optional. No new product/iOS work or binary distribution is part of this closeout.
