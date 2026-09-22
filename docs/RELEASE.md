@@ -85,7 +85,7 @@ Nothing in this runbook is automated or run by assistants without explicit autho
 5. `gh release create v<version> --prerelease --verify-tag` with the DMG, `.sha256`, `.notary.json` and `BUILD.txt`, and notes (support matrix, known limits, how to send `navcenterctl feedback-diagnostics` output).
 6. `scripts/update-homebrew-cask.sh <version> <release dmg url> <sha256> arm64 <tap>/Casks/nav-center.rb <dmg>.notary.json`.
 7. Open a tap PR.
-8. After it merges, run `brew install --cask` on the clean machine (docs/BETA-VERIFICATION-CHECKLIST.md, when it exists).
+8. After it merges, run `brew install --cask` on the clean machine. Record that pass in [BETA-VERIFICATION-CHECKLIST.md](BETA-VERIFICATION-CHECKLIST.md).
 
 ## Required proof before sharing
 

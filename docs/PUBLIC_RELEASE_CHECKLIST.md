@@ -59,4 +59,6 @@ Use the distribution gates in [RELEASE.md](RELEASE.md). The workflow fails if re
 
 Before publishing, retain evidence for the exact downloaded artifact: final checksum, app version/build, Developer ID signature and nested-code validation, accepted notarization result, staple validation, Gatekeeper acceptance, and offline launch on clean machines for every advertised architecture and minimum supported macOS. Verify upgrades and explicit uninstall/zap scope using disposable data. Never publish `-unsigned.dmg` outputs.
 
+The clean-machine steps and evidence file are in [BETA-VERIFICATION-CHECKLIST.md](BETA-VERIFICATION-CHECKLIST.md).
+
 Friends/family beta releases should stay prerelease until beta feedback and privacy checks pass.
