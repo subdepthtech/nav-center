@@ -16,11 +16,11 @@ index_for() {
   case $1 in
     atsim) index=0 ;; export-tool) index=1 ;; pandoc) index=2 ;;
     pdftotext) index=3 ;; chrome) index=4 ;; ruby) index=5 ;; codex) index=6 ;;
-    *) echo "Unknown doctor tool: $1" >&2; exit 1 ;;
+    *) echo "WARN: skipping unknown doctor tool: $1" >&2; return 1 ;;
   esac
 }
 while IFS='|' read -r name state variable path; do
-  index_for "$name"
+  if ! index_for "$name"; then continue; fi
   states[$index]=$state
   variables[$index]=$variable
   paths[$index]=$path
@@ -38,27 +38,33 @@ for name in atsim pandoc pdftotext chrome ruby codex; do
   index_for "$name"
   version=""
   if [[ ${states[$index]:-missing} == found ]]; then
+    override=${variables[$index]:-}
     path=${paths[$index]:-}
-    if [[ $name == atsim && -n ${NAV_CENTER_ATSIM_BIN:-} ]]; then
-      path=$NAV_CENTER_ATSIM_BIN
-    fi
+    if [[ -n $override && ${!override:-} == /* ]]; then path=${!override}; fi
     if [[ $path == '~/'* ]]; then path="$HOME/${path#\~/}"; fi
-    if [[ -z $path || $path != /* ]]; then
+    if [[ $path != /* || ! -x $path ]]; then
       path=$(command -v "$name" || true)
     fi
+    if [[ $name == chrome && ! -x $path ]]; then
+      path=/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome
+    fi
+    if [[ $path != /* || ! -x $path ]]; then path=""; fi
     paths[$index]=$path
-    case $name in
-      atsim) if [[ -n $path ]] && "$path" --help >/dev/null 2>&1; then version=present; fi ;;
-      pandoc) version=$("$path" --version 2>&1 | head -1 || true) ;;
-      pdftotext) version=$("$path" -v 2>&1 | head -1 || true) ;;
-      chrome|ruby|codex) version=$("$path" --version 2>&1 | head -1 || true) ;;
-    esac
+    if [[ -n $path ]]; then
+      case $name in
+        atsim) if "$path" --help >/dev/null 2>&1; then version=present; fi ;;
+        pandoc) version=$("$path" --version 2>&1 | head -1 || true) ;;
+        pdftotext) version=$("$path" -v 2>&1 | head -1 || true) ;;
+        chrome|ruby|codex) version=$("$path" --version 2>&1 | head -1 || true) ;;
+      esac
+    fi
   fi
   for redact_path in "${paths[@]}"; do
     if [[ -n $redact_path ]]; then version=${version//$redact_path/<tool path>}; fi
   done
   version=${version//$HOME/\~}
   version=${version//$'\n'/ }
+  version="${version%"${version##*[![:space:]]}"}"
   printf '%s\t%s\n' "$name" "$version" >> "$version_file"
 done
 redaction_paths=$(IFS='|'; echo "${paths[*]}|$bin/navcenterctl")
@@ -77,9 +83,10 @@ lane_status=(--)
 redact_log() {
   NAV_REDACT_PATHS="$redaction_paths" python3 -c '
 import os, sys
-value = sys.stdin.read().replace(os.environ["HOME"], "~")
+value = sys.stdin.read()
 for path in sorted(filter(None, os.environ["NAV_REDACT_PATHS"].split("|")), key=len, reverse=True):
     value = value.replace(path, "<tool path>")
+value = value.replace(os.environ["HOME"], "~")
 sys.stdout.write(value)
 '
 }

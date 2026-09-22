@@ -99,6 +99,16 @@ NAVCENTERCTL="$(xcrun swift build --show-bin-path --scratch-path "$nav_build_roo
 The Swift test resolves Pandoc, pdftotext, and Chrome with the default probe, exports one synthetic resume, and requires `Resume_*.html`, `.docx`, `.pdf`, `.docx.txt`, and `.pdf.txt`, with a PDF header and non-empty text extractions. The `test_cli.py` real lane runs `export-artifacts` with no tool overrides and the same five-file check, with a 120 second timeout. See [`ExportToolReadinessTests`](../Tests/NavCenterTests/ExportToolReadinessTests.swift).
 Both real-export lanes remove `NAV_CENTER_VAULT_DIR` and set `NAV_CENTER_SKIP_VAULT_SYNC=1`, so a configured vault is never written.
 
+For a separately reviewed, installed ATS executable, substitute its absolute path:
+
+```bash
+NAV_CENTER_TEST_ATSIM_BIN=/absolute/path/to/atsim \
+  xcrun swift test --scratch-path "$nav_build_root" \
+  --filter ATSActionReadinessTests.testInstalledATS
+```
+
+The two installed-ATS tests exercise a synthetic scan/report and input-alias rejection. `NAV_CENTER_TEST_ATSIM_BIN` is the test opt-in; production executable selection uses `NAV_CENTER_ATSIM_BIN`. The action supplies `ATSIM_JOB_HUNT_ROOT` for its private staging workspace. The vendored snapshot alone does not enable this integration; see [its provenance and license caveat](../vendor/atsim/UPSTREAM.md). Stubbed ATS/converter cases prove validation and rollback contracts, not compatibility with a real external tool.
+
 ## Integration acceptance lane
 
 Run `scripts/integration-acceptance.sh /absolute/path/to/output` from the repository root with a licensed Xcode toolchain, Python 3, installed atsim, Pandoc, Poppler `pdftotext`, and Google Chrome. Set `NAV_CENTER_ATSIM_BIN` to an absolute executable path when atsim is not on PATH. The script builds `navcenterctl`, reads its redacted `doctor --json` report, records observed tool versions, and writes lane logs plus `integration-acceptance.json` and `.md` to the chosen directory. Use a temporary output directory and synthetic test data.
@@ -119,16 +129,6 @@ Use a disposable synthetic package and a signed-in maintainer session. Record th
 | The server is stopped before changes are applied. | |
 | Compare `ls -la ~/.codex` before and after; Nav Center does not modify it. | |
 | No private data is used. | |
-
-For a separately reviewed, installed ATS executable, substitute its absolute path:
-
-```bash
-NAV_CENTER_TEST_ATSIM_BIN=/absolute/path/to/atsim \
-  xcrun swift test --scratch-path "$nav_build_root" \
-  --filter ATSActionReadinessTests.testInstalledATS
-```
-
-The two installed-ATS tests exercise a synthetic scan/report and input-alias rejection. `NAV_CENTER_TEST_ATSIM_BIN` is the test opt-in; production executable selection uses `NAV_CENTER_ATSIM_BIN`. The action supplies `ATSIM_JOB_HUNT_ROOT` for its private staging workspace. The vendored snapshot alone does not enable this integration; see [its provenance and license caveat](../vendor/atsim/UPSTREAM.md). Stubbed ATS/converter cases prove validation and rollback contracts, not compatibility with a real external tool.
 
 ## Coverage and CI evidence
 

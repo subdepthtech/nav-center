@@ -32,6 +32,8 @@ elif name == "swift":
         lane = args[-1]
         skip = 1 if os.environ.get("FAKE_SKIP_LANE") == lane else 0
         print(f"Executed 2 tests, with {skip} tests skipped and 0 failures")
+        if os.environ.get("FAKE_LOG_TOOL_PATH"):
+            print(os.environ["FAKE_LOG_TOOL_PATH"])
 elif name == "navcenterctl":
     print(os.environ["FAKE_DOCTOR"])
 elif name == "git":
@@ -42,6 +44,10 @@ elif name == "atsim":
     pass
 elif name == "pdftotext":
     print("pdftotext version 25.01.0", file=sys.stderr)
+elif name == "pandoc":
+    print(f"pandoc 1.0 {sys.argv[0]}")
+elif name == "chrome":
+    print("chrome 1.0   ")
 else:
     print(f"{name} 1.0")
 '''
@@ -103,6 +109,8 @@ class IntegrationLaneTests(unittest.TestCase):
         self.assertEqual([lane["name"] for lane in summary["lanes"]],
                          ["ats", "chrome", "export", "cli-export"])
         self.assertTrue(all(lane["executed"] > 0 and lane["skipped"] == 0 for lane in summary["lanes"]))
+        chrome = next(tool for tool in summary["tools"] if tool["name"] == "chrome")
+        self.assertEqual(chrome["version"], "chrome 1.0")
 
     def test_lane_fails_naming_first_missing_tool_before_running_tests(self):
         self.doctor["tools"][0]["state"] = "missing"
@@ -120,8 +128,41 @@ class IntegrationLaneTests(unittest.TestCase):
         self.assertEqual(chrome["skipped"], 1)
         self.assertEqual(chrome["result"], "fail")
 
-    def test_summary_json_schema_and_home_redaction(self):
+    def test_lane_fails_when_cli_export_reports_skipped(self):
+        result = self.run_lane(FAKE_CLI_SKIP="1")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        cli = next(lane for lane in self.summary()["lanes"] if lane["name"] == "cli-export")
+        self.assertEqual(cli["skipped"], 1)
+        self.assertEqual(cli["result"], "fail")
+
+    def test_override_paths_supply_versions_when_doctor_redacts_paths(self):
+        changes = {}
+        overrides = self.home / "overrides"
+        overrides.mkdir()
+        for name, variable in (("pandoc", "PANDOC_BIN"), ("pdftotext", "PDFTOTEXT_BIN"),
+                               ("chrome", "CHROME_BIN"), ("codex", "DASHBOARD_CODEX_BIN")):
+            item = next(tool for tool in self.doctor["tools"] if tool["tool"] == name)
+            item["resolvedPath"] = None
+            replacement = overrides / name
+            replacement.write_text(f"#!{sys.executable}\nprint('override {name}')\n")
+            replacement.chmod(0o755)
+            changes[variable] = str(replacement)
+        result = self.run_lane(**changes)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        versions = {tool["name"]: tool["version"] for tool in self.summary()["tools"]}
+        for name in ("pandoc", "pdftotext", "chrome", "codex"):
+            self.assertEqual(versions[name], f"override {name}")
+
+    def test_unknown_doctor_tool_warns_and_writes_summary(self):
+        self.doctor["tools"].append({"tool": "future-tool", "state": "found"})
         result = self.run_lane()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("WARN: skipping unknown doctor tool: future-tool", result.stderr)
+        self.assertEqual(self.summary()["result"], "pass")
+
+    def test_summary_json_schema_and_home_redaction(self):
+        tool_path = str(self.tools / "pandoc")
+        result = self.run_lane(FAKE_LOG_TOOL_PATH=tool_path)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         summary = self.summary()
         self.assertEqual(set(summary), {"schema", "date", "source_sha", "macos", "arch", "tools", "lanes", "result"})
@@ -131,10 +172,20 @@ class IntegrationLaneTests(unittest.TestCase):
         self.assertEqual(set(summary["tools"][0]), {"name", "state", "version"})
         self.assertEqual(set(summary["lanes"][0]),
                          {"name", "command", "exit_status", "executed", "skipped", "failures", "result"})
+        for lane in summary["lanes"]:
+            for field in ("executed", "skipped", "failures", "exit_status"):
+                self.assertIsInstance(lane[field], int)
+        pandoc = next(tool for tool in summary["tools"] if tool["name"] == "pandoc")
+        self.assertIn("<tool path>", pandoc["version"])
         for name in ("integration-acceptance.json", "integration-acceptance.md"):
             content = (self.out / name).read_text()
             self.assertNotIn(str(self.home), content)
+            self.assertNotIn(tool_path, content)
             self.assertNotIn("resolvedPath", content)
+        log = (self.out / "chrome.log").read_text()
+        self.assertIn("<tool path>", log)
+        self.assertNotIn(tool_path, log)
+        self.assertNotIn(str(self.home), log)
 
 
 if __name__ == "__main__":
