@@ -52,6 +52,42 @@ final class CoreDataIntegrityTests: XCTestCase {
         XCTAssertEqual(try TrackerStore(repoRoot: root).loadRows().count, 1)
     }
 
+    func testFailedFirstStatusActionKeepsInitializedTrackerAndCanRetry() throws {
+        let posting = package.appendingPathComponent("posting.md")
+        let invalidPosting = Data([0xFF, 0xFE])
+        try invalidPosting.write(to: posting)
+        XCTAssertFalse(SQLiteSupport.exists(database))
+
+        XCTAssertThrowsError(try status()) { error in
+            XCTAssertTrue(error.localizedDescription.contains("not UTF-8"), error.localizedDescription)
+        }
+
+        XCTAssertEqual(try Data(contentsOf: posting), invalidPosting)
+        XCTAssertTrue(try TrackerStore(repoRoot: root).loadRows().isEmpty)
+        XCTAssertTrue(try TrackerStore.queryRows(repoRoot: root, dbPath: database, sql: "select * from status_events;").isEmpty)
+        try makePackage(packageName)
+
+        let result = try status(.interview)
+        XCTAssertEqual(result.oldStatus, "")
+        XCTAssertEqual(result.newStatus, "Interview")
+        XCTAssertTrue(result.warnings.isEmpty)
+        XCTAssertEqual(try TrackerStore(repoRoot: root).loadRows().map(\.status), ["Interview"])
+        let events = try TrackerStore.queryRows(repoRoot: root, dbPath: database, sql: "select * from status_events;")
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events.first?["old_status"] as? String, "")
+        XCTAssertEqual(events.first?["new_status"] as? String, "Interview")
+    }
+
+    func testEmptyExistingTrackerIsNotInitialized() throws {
+        try Data().write(to: database)
+
+        XCTAssertThrowsError(try status()) { error in
+            XCTAssertTrue(error.localizedDescription.contains("missing required columns"), error.localizedDescription)
+        }
+
+        XCTAssertEqual(try Data(contentsOf: database), Data())
+    }
+
     func testStatusChangeRefusesTrackerIDCollisionWithoutMutatingSibling() throws {
         let first = "2099-01-01_A-B_Role"
         let second = "2099-01-01_A_B_Role"

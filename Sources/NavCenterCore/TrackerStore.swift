@@ -62,8 +62,10 @@ public final class TrackerStore {
         let existed = SQLiteSupport.exists(dbPath)
         try PathSafety.createDirectory(dbPath.deletingLastPathComponent(), inside: repoRoot, label: "tracking directory")
         let connection = try SQLiteSupport.Connection(dbPath: dbPath, repoRoot: repoRoot, writable: true, create: !existed)
+        // Keep a valid empty tracker if the first status action fails. Rolling
+        // schema creation back with that action leaves a file that cannot retry.
+        if !existed { try connection.transaction { try connection.createSchema() } }
         let result: TrackerStatusUpdateResult = try connection.transaction {
-            if !existed { try connection.createSchema() }
             try connection.validateSchema()
             let applicationDir = "applications/" + packageName
             let expectedID = trackerID(packageName: packageName)
