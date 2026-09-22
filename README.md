@@ -19,6 +19,8 @@ This is a beta source tree extracted from a private workflow. The repository con
 - Optional: `NAV_CENTER_EXPORT_BIN` to override the built-in confirmed resume export action with a compatible external exporter
 - Optional: Codex CLI with app-server support and managed sign-in for the in-app Codex panel
 
+A Finder-launched app does not inherit your shell PATH. Nav Center finds tools in `/opt/homebrew/bin`, `/usr/local/bin`, and `~/.local/bin` without executing them; set the variable named above to an absolute path when a tool lives somewhere else.
+
 ## Build
 
 Development guidance: [architecture](docs/ARCHITECTURE.md), [testing](docs/TESTING.md), [tooling runbook](docs/TOOLING.md), and [setup status](docs/SETUP.md). Shared agent policy is in [AGENTS.md](AGENTS.md).

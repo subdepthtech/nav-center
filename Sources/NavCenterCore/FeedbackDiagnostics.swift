@@ -6,6 +6,7 @@ public struct FeedbackDiagnosticsReport: Codable, Equatable {
     public let macOSVersion: String
     public let workspace: WorkspaceDiagnostics
     public let recentLogs: [String]
+    public let tools: ToolAvailabilityReport
 }
 
 public struct WorkspaceDiagnostics: Codable, Equatable {
@@ -24,19 +25,23 @@ public final class FeedbackDiagnostics {
     private let appVersion: String
     private let fileManager: FileManager
     private let now: () -> Date
+    private let toolProbe: ToolProbeConfiguration
 
     public init(
         workspaceRoot: URL,
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
         appVersion: String = FeedbackDiagnostics.buildVersion,
         fileManager: FileManager = .default,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        toolProbe: ToolProbeConfiguration? = nil
     ) {
+        let home = homeDirectory.standardizedFileURL
         self.workspaceRoot = workspaceRoot.standardizedFileURL
-        self.homeDirectory = homeDirectory.standardizedFileURL
+        self.homeDirectory = home
         self.appVersion = appVersion
         self.fileManager = fileManager
         self.now = now
+        self.toolProbe = toolProbe ?? ToolProbeConfiguration(environment: ProcessInfo.processInfo.environment, homeDirectory: home)
     }
 
     public static var buildVersion: String {
@@ -53,12 +58,14 @@ public final class FeedbackDiagnostics {
     public func report(redact: Bool) -> FeedbackDiagnosticsReport {
         let redactor = Redactor(homeDirectory: homeDirectory, enabled: redact)
         let workspace = workspaceReport(redactor: redactor)
+        let availability = ToolProbe.report(configuration: toolProbe)
         return FeedbackDiagnosticsReport(
             generatedAt: ISO8601DateFormatter().string(from: now()),
             appVersion: appVersion,
             macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
             workspace: workspace,
-            recentLogs: redact ? [] : recentLogs(redactor: redactor)
+            recentLogs: redact ? [] : recentLogs(redactor: redactor),
+            tools: redact ? availability.redacted(homeDirectory: homeDirectory) : availability
         )
     }
 
@@ -114,21 +121,57 @@ public final class FeedbackDiagnostics {
     }
 }
 
+public enum PathRedactor {
+    public static func redact(_ value: String, homeDirectory: URL) -> String {
+        // Home is removed only at a component boundary. Non-matches stay intact so the
+        // /Users/<name> and username rules still see the original text.
+        var redacted = value
+        for prefix in homePrefixes(homeDirectory) {
+            redacted = replacingHomePrefix(prefix, in: redacted)
+        }
+        if let username = homeDirectory.lastPathComponent.split(separator: "/").last, !username.isEmpty {
+            redacted = redacted.replacingOccurrences(of: String(username), with: "<user>")
+        }
+        return redacted.replacingOccurrences(
+            of: #"/Users/[^/\s\"]+"#,
+            with: "<home>",
+            options: .regularExpression
+        )
+    }
+
+    private static func replacingHomePrefix(_ prefix: String, in value: String) -> String {
+        guard !prefix.isEmpty else { return value }
+        var result = String()
+        result.reserveCapacity(value.count)
+        var cursor = value.startIndex
+        while cursor < value.endIndex, let range = value.range(of: prefix, range: cursor..<value.endIndex) {
+            result.append(contentsOf: value[cursor..<range.lowerBound])
+            let next = range.upperBound
+            if next == value.endIndex || value[next] == "/" {
+                result.append("<home>")
+            } else {
+                result.append(contentsOf: value[range])
+            }
+            cursor = next
+        }
+        result.append(contentsOf: value[cursor..<value.endIndex])
+        return result
+    }
+
+    private static func homePrefixes(_ homeDirectory: URL) -> [String] {
+        let prefixes = [homeDirectory.standardizedFileURL.path, homeDirectory.path].map { path -> String in
+            path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
+        }
+        return Array(Set(prefixes)).filter { !$0.isEmpty && $0 != "/" }.sorted { $0.count > $1.count }
+    }
+}
+
 private struct Redactor {
     let homeDirectory: URL
     let enabled: Bool
 
     func redact(_ value: String) -> String {
         guard enabled else { return value }
-        var redacted = value.replacingOccurrences(of: homeDirectory.path, with: "<home>")
-        if let username = homeDirectory.lastPathComponent.split(separator: "/").last, !username.isEmpty {
-            redacted = redacted.replacingOccurrences(of: String(username), with: "<user>")
-        }
-        redacted = redacted.replacingOccurrences(
-            of: #"/Users/[^/\s\"]+"#,
-            with: "<home>",
-            options: .regularExpression
-        )
-        return redacted
+        return PathRedactor.redact(value, homeDirectory: homeDirectory)
     }
 }

@@ -320,13 +320,34 @@ final class CoreSafetyReadinessTests: XCTestCase {
     func testRedactedDiagnosticsNeverIncludesRawLogsOrOverridePath() throws {
         let root = try fixture()
         _ = try WorkspaceManager(workspaceRoot: root).initialize()
-        try Data("Authorization: Bearer SYNTHETIC_TOKEN_NOT_REAL\nemail=synthetic@example.invalid".utf8).write(to: root.appendingPathComponent("logs/example.log"))
-        let report = FeedbackDiagnostics(workspaceRoot: root).report(redact: true)
-        let json = String(decoding: try JSONEncoder().encode(report), as: UTF8.self)
+        let home = root.appendingPathComponent("Users/synthetic", isDirectory: true).standardizedFileURL
+        let override = home.appendingPathComponent("bin/atsim")
+        try FileManager.default.createDirectory(at: override.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(to: override)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: override.path)
+        try Data("Authorization: Bearer SYNTHETIC_TOKEN_NOT_REAL\nemail=synthetic@example.invalid\npath=\(home.path)/resume.pdf".utf8).write(to: root.appendingPathComponent("logs/example.log"))
+        let probe = ToolProbeConfiguration(
+            environment: ["PATH": "", "NAV_CENTER_ATSIM_BIN": override.path],
+            homeDirectory: home,
+            fallbackDirectories: []
+        )
+        let report = FeedbackDiagnostics(workspaceRoot: root, homeDirectory: home, toolProbe: probe).report(redact: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        let json = String(decoding: try encoder.encode(report), as: UTF8.self)
+        let toolsJSON = String(decoding: try encoder.encode(report.tools), as: UTF8.self)
         XCTAssertEqual(report.workspace.path, "<workspace>")
         XCTAssertTrue(report.recentLogs.isEmpty)
         XCTAssertFalse(json.contains("SYNTHETIC_TOKEN"))
         XCTAssertFalse(json.contains("synthetic@example"))
+        XCTAssertFalse(json.contains("/Users/"))
+        XCTAssertFalse(json.contains(home.path))
+        XCTAssertFalse(toolsJSON.contains("/Users/"))
+        XCTAssertFalse(toolsJSON.contains(override.path))
+        let atsim = try XCTUnwrap(report.tools.tools.first { $0.tool == .atsim })
+        XCTAssertEqual(atsim.state, .found)
+        XCTAssertNil(atsim.resolvedPath)
+        XCTAssertEqual(atsim.summary, "Found via NAV_CENTER_ATSIM_BIN (path hidden in redacted output)")
         XCTAssertFalse(json.contains(root.lastPathComponent))
     }
 }

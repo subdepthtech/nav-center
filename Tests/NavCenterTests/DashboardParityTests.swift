@@ -8,6 +8,11 @@ import struct NavCenterCore.PackageCleanupCandidate
 import struct NavCenterCore.PackageCleanupPreview
 import struct NavCenterCore.PackageCleanupResult
 import struct NavCenterCore.ImportedDocument
+import struct NavCenterCore.ToolAvailabilityReport
+import struct NavCenterCore.ToolStatus
+import enum NavCenterCore.ExternalTool
+import enum NavCenterCore.ToolState
+import class NavCenterCore.FeedbackDiagnostics
 @testable import NavCenterApp
 
 final class DashboardParityTests: XCTestCase {
@@ -211,6 +216,39 @@ final class DashboardParityTests: XCTestCase {
             ]
         )
         XCTAssertEqual(checks.map(\.isPassing), [true, true, true, true, true, true, false])
+    }
+
+    @MainActor
+    func testStoreBootstrapPublishesToolAvailabilityAndAppVersion() async {
+        let report = ToolAvailabilityReport(tools: [
+            ToolStatus(
+                tool: .codex,
+                state: .missing,
+                resolvedPath: nil,
+                source: nil,
+                environmentVariable: "DASHBOARD_CODEX_BIN",
+                installHint: "install the Codex CLI and sign in once from a terminal",
+                summary: "missing"
+            )
+        ])
+        let store = DashboardStore(service: ToolReportingDashboardService(report: report))
+
+        await store.bootstrap()
+
+        XCTAssertEqual(store.toolAvailability, report)
+        XCTAssertEqual(store.appVersion, FeedbackDiagnostics.buildVersion)
+        XCTAssertFalse(store.appVersion.isEmpty)
+        XCTAssertNil(store.errorMessage)
+    }
+
+    @MainActor
+    func testServiceWithoutToolSupportLeavesSettingsTableEmptyNotErrored() async {
+        let store = DashboardStore(service: IntakeDashboardService())
+
+        await store.bootstrap()
+
+        XCTAssertEqual(store.toolAvailability, .empty)
+        XCTAssertNil(store.errorMessage)
     }
 
     private func packageFile(
@@ -421,6 +459,64 @@ private final class IntakeDashboardService: DashboardServicing, @unchecked Senda
             packages: PackageSource(available: true, scanned: 1, warnings: [])
         )
     }
+}
+
+private final class ToolReportingDashboardService: DashboardServicing, @unchecked Sendable {
+    private let base = IntakeDashboardService()
+    private let report: ToolAvailabilityReport
+
+    init(report: ToolAvailabilityReport) {
+        self.report = report
+    }
+
+    var repoRoot: URL { base.repoRoot }
+
+    func fetchSummary() throws -> DashboardSummary { try base.fetchSummary() }
+    func fetchApplications(limit: Int) throws -> ApplicationsResponse { try base.fetchApplications(limit: limit) }
+    func fetchPackage(named packageName: String) throws -> PackageResponse { try base.fetchPackage(named: packageName) }
+    func fetchTab(packageName: String, tabKey: String, file: String?) throws -> PackageTabPreviewResponse {
+        try base.fetchTab(packageName: packageName, tabKey: tabKey, file: file)
+    }
+    func fetchFilePreview(packageName: String, file: String) throws -> PackageFilePreviewResponse {
+        try base.fetchFilePreview(packageName: packageName, file: file)
+    }
+    func fetchActions(packageName: String, limit: Int) -> ActionLogResponse {
+        base.fetchActions(packageName: packageName, limit: limit)
+    }
+    func runAction(packageName: String, actionKey: String, confirmed: Bool) throws -> ActionResultResponse {
+        try base.runAction(packageName: packageName, actionKey: actionKey, confirmed: confirmed)
+    }
+    func updatePackageStatus(packageName: String, status: TrackerStatus) throws -> TrackerStatusUpdateResult {
+        try base.updatePackageStatus(packageName: packageName, status: status)
+    }
+    func previewPackageCleanup(olderThanDays: Int) throws -> PackageCleanupPreview {
+        try base.previewPackageCleanup(olderThanDays: olderThanDays)
+    }
+    func applyPackageCleanup(olderThanDays: Int, deleteTracked: Bool, expectedPreview: PackageCleanupPreview) throws -> PackageCleanupResult {
+        try base.applyPackageCleanup(olderThanDays: olderThanDays, deleteTracked: deleteTracked, expectedPreview: expectedPreview)
+    }
+    func importDocuments(_ urls: [URL]) throws -> [ImportedDocument] { try base.importDocuments(urls) }
+    func createPackage(from request: JobDescriptionIntakeRequest) throws -> CreateApplicationResult {
+        try base.createPackage(from: request)
+    }
+    func loadMasterResume() throws -> MasterResumeSnapshot { try base.loadMasterResume() }
+    func saveMasterResume(content: String, expectedContent: String?) throws -> MasterResumeSaveResult {
+        try base.saveMasterResume(content: content, expectedContent: expectedContent)
+    }
+    func prepareRealtimeInterviewKit(packageName: String, overwrite: Bool) throws -> RealtimeInterviewKitResponse {
+        try base.prepareRealtimeInterviewKit(packageName: packageName, overwrite: overwrite)
+    }
+    func realtimeInterviewReviewPrompt(packageName: String) throws -> String {
+        try base.realtimeInterviewReviewPrompt(packageName: packageName)
+    }
+    func localFileURL(packageName: String, relativePath: String) throws -> URL {
+        try base.localFileURL(packageName: packageName, relativePath: relativePath)
+    }
+    func fetchCodexStatus() throws -> CodexStatusResponse { try base.fetchCodexStatus() }
+    func startCodexLogin(type: String) throws -> CodexLoginStartResponse { try base.startCodexLogin(type: type) }
+    func sendCodexChat(_ payload: CodexChatRequest) throws -> CodexChatResponse { try base.sendCodexChat(payload) }
+
+    func fetchToolAvailability() throws -> ToolAvailabilityReport { report }
 }
 
 private final class CleanupRefreshService: DashboardServicing, @unchecked Sendable {

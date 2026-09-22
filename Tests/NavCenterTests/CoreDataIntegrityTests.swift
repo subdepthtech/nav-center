@@ -609,6 +609,60 @@ final class CoreDataIntegrityTests: XCTestCase {
         XCTAssertEqual(try outputs.map { try Data(contentsOf: $0) }, original)
     }
 
+    func testExportRefusesWithNamedMessageBeforeVersionCheckWhenPandocMissing() throws {
+        let source = package.appendingPathComponent("Resume_" + packageName + ".md")
+        try put("# Candidate\nA sufficiently detailed synthetic engineering resume.", source)
+        let templates = root.appendingPathComponent("templates")
+        try FileManager.default.createDirectory(at: templates, withIntermediateDirectories: true)
+        try put("body { color: black; }", templates.appendingPathComponent("resume.css"))
+        let output = root.appendingPathComponent("output")
+        let artifacts = package.appendingPathComponent("artifacts")
+        let beforeOutput = try snapshot(output)
+        let beforeArtifacts = try snapshot(artifacts)
+        let probe = ToolProbeConfiguration(
+            environment: ["PATH": ""],
+            homeDirectory: root,
+            fallbackDirectories: [],
+            isExecutableRegularFile: { _ in false }
+        )
+
+        XCTAssertThrowsError(try ArtifactExporter(repoRoot: root, environment: probe.environment, toolProbe: probe).export(markdownPaths: ["applications/" + packageName + "/" + source.lastPathComponent])) { error in
+            let message = String(describing: error)
+            XCTAssertTrue(message.contains("Document export needs Pandoc"))
+            XCTAssertTrue(message.contains("PANDOC_BIN"))
+            XCTAssertTrue(message.contains("brew install pandoc"))
+            XCTAssertFalse(message.contains("Required tool not available"))
+        }
+        XCTAssertEqual(try snapshot(output), beforeOutput)
+        XCTAssertEqual(try snapshot(artifacts), beforeArtifacts)
+    }
+
+    func testExportUsesFallbackDirectoryPandocWhenPathIsEmpty() throws {
+        let source = package.appendingPathComponent("Resume_" + packageName + ".md")
+        try put("# Candidate\nA sufficiently detailed synthetic engineering resume.", source)
+        let templates = root.appendingPathComponent("templates")
+        try FileManager.default.createDirectory(at: templates, withIntermediateDirectories: true)
+        try put("body { color: black; }", templates.appendingPathComponent("resume.css"))
+        let tools = try makeExportTools(chromeFails: false)
+        let pandoc = URL(fileURLWithPath: try XCTUnwrap(tools["PANDOC_BIN"]))
+        let marker = root.appendingPathComponent("pandoc-invocations.txt")
+        let original = try String(contentsOf: pandoc)
+        let marked = original.replacingOccurrences(of: "#!/bin/sh\n", with: "#!/bin/sh\nprintf '%s\\n' \"$0\" >> '\(marker.path)'\n")
+        try marked.write(to: pandoc, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: pandoc.path)
+        var environment = tools
+        environment.removeValue(forKey: "PANDOC_BIN")
+        environment["PATH"] = ""
+        let probe = ToolProbeConfiguration(environment: environment, homeDirectory: root, fallbackDirectories: [pandoc.deletingLastPathComponent().path])
+
+        let result = try ArtifactExporter(repoRoot: root, environment: environment, toolProbe: probe).export(markdownPaths: ["applications/" + packageName + "/" + source.lastPathComponent])
+
+        XCTAssertEqual(result.count, 1)
+        let lines = try String(contentsOf: marker).split(separator: "\n").map(String.init)
+        XCTAssertFalse(lines.isEmpty)
+        XCTAssertTrue(lines.allSatisfy { $0 == pandoc.path })
+    }
+
     func testExportSecondInputFailureExplicitlyReportsCompletedDocuments() throws {
         let source = package.appendingPathComponent("Resume_" + packageName + ".md")
         try put("A sufficiently detailed synthetic engineering resume.", source)
@@ -832,6 +886,12 @@ final class CoreDataIntegrityTests: XCTestCase {
         _ = try PackageCleanup(repoRoot: root).restore(manifestURL: result.manifestURL, confirmed: true)
         XCTAssertTrue(SQLiteSupport.exists(package))
         XCTAssertEqual(try TrackerStore(repoRoot: root).loadRows().count, 1)
+    }
+
+    private func snapshot(_ url: URL) throws -> [String] {
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: nil) else { return [] }
+        return enumerator.compactMap { ($0 as? URL)?.path }.sorted()
     }
 
     private func manifestObject(_ result: PackageCleanupResult) throws -> [String: Any] {

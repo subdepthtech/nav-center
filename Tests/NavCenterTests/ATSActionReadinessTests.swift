@@ -233,4 +233,156 @@ final class ATSActionReadinessTests: XCTestCase {
         XCTAssertNotNil(json["warnings"] as? [String])
         XCTAssertEqual((json["input"] as? [String: Any])?["text_source"] as? String, resume.path)
     }
+
+    func testMissingATSToolFailsWithNamedMessageWithoutSpawning() throws {
+        let probe = isolatedProbe()
+        let result = try PackageActionRunner(repoRoot: root, environment: probe.environment, toolProbe: probe).run(packageName: packageName, actionKey: "ats-scan", confirmed: true)
+        XCTAssertEqual(result.status, "failed")
+        XCTAssertNil(result.exitCode)
+        XCTAssertEqual(result.command, "atsim scan applications/\(packageName) --out applications/\(packageName)/artifacts/ats-report.json")
+        XCTAssertEqual(result.message, "ATS scan needs atsim, which was not found on PATH or in /opt/homebrew/bin, /usr/local/bin, or ~/.local/bin. Set NAV_CENTER_ATSIM_BIN to its absolute path, or install atsim into an isolated Python environment and expose its launcher on PATH and reopen Nav Center.")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
+    }
+
+    func testHookExitCode127MapsToNamedToolMessage() throws {
+        let probe = isolatedProbe()
+        var calls = 0
+        let result = try PackageActionRunner(repoRoot: root, environment: probe.environment, toolProbe: probe).run(packageName: packageName, actionKey: "ats-scan", confirmed: true) { executable, _, _, _ in
+            calls += 1
+            XCTAssertEqual(executable, "atsim")
+            return ProcessResult(status: 127, stdout: "", stderr: "command not found")
+        }
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(result.status, "failed")
+        XCTAssertEqual(result.exitCode, 127)
+        XCTAssertEqual(result.message, "ATS scan needs atsim, which was not found on PATH or in /opt/homebrew/bin, /usr/local/bin, or ~/.local/bin. Set NAV_CENTER_ATSIM_BIN to its absolute path, or install atsim into an isolated Python environment and expose its launcher on PATH and reopen Nav Center.")
+        XCTAssertFalse(result.message.contains("exit code"))
+    }
+
+    func testHookNonZeroExitOtherThan127KeepsExitCodeMessage() throws {
+        let probe = isolatedProbe()
+        let result = try PackageActionRunner(repoRoot: root, environment: probe.environment, toolProbe: probe).run(packageName: packageName, actionKey: "ats-scan", confirmed: true) { _, _, _, _ in
+            ProcessResult(status: 3, stdout: "", stderr: "fixture")
+        }
+        XCTAssertEqual(result.status, "failed")
+        XCTAssertEqual(result.exitCode, 3)
+        XCTAssertEqual(result.message, "ATS scan failed with exit code 3.")
+    }
+
+    func testFoundToolExitingOneTwentySevenKeepsExitCodeMessage() throws {
+        let script = root.appendingPathComponent("bin/atsim")
+        try FileManager.default.createDirectory(at: script.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let stderrMarker = "found-tool-exit-127"
+        let body = """
+        #!/bin/sh
+        echo \(stderrMarker) >&2
+        exit 127
+        """
+        try Data(body.utf8).write(to: script)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+        let probe = ToolProbeConfiguration(
+            environment: ["PATH": "", "NAV_CENTER_ATSIM_BIN": script.path],
+            homeDirectory: root,
+            fallbackDirectories: []
+        )
+        let result = try PackageActionRunner(repoRoot: root, environment: probe.environment, toolProbe: probe).run(
+            packageName: packageName,
+            actionKey: "ats-scan",
+            confirmed: true
+        )
+        XCTAssertEqual(result.status, "failed")
+        XCTAssertEqual(result.exitCode, 127)
+        XCTAssertEqual(result.message, "ATS scan failed with exit code 127.")
+        XCTAssertTrue(result.stderrTail.contains(stderrMarker))
+    }
+
+    func testBuiltInExportRefusesWhenRunnerEnvironmentDiffersFromProbe() throws {
+        let marker = root.appendingPathComponent("export-spawned")
+        let exporter = root.appendingPathComponent("acme-export")
+        let script = "#!/bin/sh\nprintf spawned > '\(marker.path)'\nexit 0\n"
+        try Data(script.utf8).write(to: exporter)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: exporter.path)
+        let probe = ToolProbeConfiguration(
+            environment: ["PATH": ""],
+            homeDirectory: root,
+            fallbackDirectories: [],
+            isExecutableRegularFile: { _ in false }
+        )
+        let environment = ["PATH": "", "NAV_CENTER_EXPORT_BIN": exporter.path]
+        let result = try PackageActionRunner(repoRoot: root, environment: environment, toolProbe: probe).run(
+            packageName: packageName,
+            actionKey: "refresh-resume",
+            confirmed: true
+        )
+        XCTAssertEqual(result.status, "failed")
+        XCTAssertNil(result.exitCode)
+        XCTAssertEqual(
+            result.message,
+            "Resume PDF refresh needs Export tool, but NAV_CENTER_EXPORT_BIN does not point to an executable file. Fix or unset NAV_CENTER_EXPORT_BIN."
+        )
+        XCTAssertFalse(result.message.contains(exporter.path))
+        XCTAssertFalse(result.message.contains("acme-export"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: package.appendingPathComponent("artifacts/Resume_\(packageName).pdf").path))
+    }
+
+    func testInvalidExportOverrideFailsRefreshWithNamedMessage() throws {
+        let missing = root.appendingPathComponent("missing-exporter").path
+        let probe = isolatedProbe(environment: ["PATH": "", "NAV_CENTER_EXPORT_BIN": missing])
+        let result = try PackageActionRunner(repoRoot: root, environment: probe.environment, toolProbe: probe).run(packageName: packageName, actionKey: "refresh-resume", confirmed: true)
+        XCTAssertEqual(result.status, "failed")
+        XCTAssertNil(result.exitCode)
+        XCTAssertNotNil(result.command)
+        XCTAssertEqual(result.message, "Resume PDF refresh needs Export tool, but NAV_CENTER_EXPORT_BIN does not point to an executable file. Fix or unset NAV_CENTER_EXPORT_BIN.")
+        XCTAssertFalse(result.message.contains(missing))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: package.appendingPathComponent("artifacts/Resume_\(packageName).pdf").path))
+    }
+
+    func testResolvedExecutableIsRecordedInActionLog() throws {
+        let script = root.appendingPathComponent("bin/atsim")
+        try FileManager.default.createDirectory(at: script.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let body = """
+        #!/bin/sh
+        out=""
+        prev=""
+        for arg in "$@"; do
+          if [ "$prev" = "--out" ]; then
+            out="$arg"
+          fi
+          prev="$arg"
+        done
+        printf '%s\\n' '{"scores":{"overall":82},"warnings":[]}' > "$out"
+        """
+        try Data(body.utf8).write(to: script)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+        let probe = ToolProbeConfiguration(
+            environment: ["PATH": "", "NAV_CENTER_ATSIM_BIN": script.path],
+            homeDirectory: root,
+            fallbackDirectories: [],
+            isExecutableRegularFile: { $0 == script.path }
+        )
+        let runner = PackageActionRunner(repoRoot: root, environment: probe.environment, toolProbe: probe)
+        let result = try runner.run(packageName: packageName, actionKey: "ats-scan", confirmed: true)
+        let expected = "\(script.path) scan applications/\(packageName) --out applications/\(packageName)/artifacts/ats-report.json"
+        XCTAssertEqual(result.status, "succeeded", result.message)
+        XCTAssertEqual(result.command, expected)
+        XCTAssertEqual(runner.actionLog(packageName: packageName).first?.command, expected)
+        XCTAssertTrue(result.command?.hasPrefix("/") == true)
+
+        let hooked = try PackageActionRunner(repoRoot: root, environment: probe.environment, toolProbe: probe).run(
+            packageName: packageName,
+            actionKey: "ats-scan",
+            confirmed: true
+        ) { _, _, _, _ in
+            ProcessResult(status: 2, stdout: "", stderr: "")
+        }
+        XCTAssertEqual(
+            hooked.command,
+            "atsim scan applications/\(packageName) --out applications/\(packageName)/artifacts/ats-report.json"
+        )
+    }
+
+    private func isolatedProbe(environment: [String: String] = ["PATH": ""]) -> ToolProbeConfiguration {
+        ToolProbeConfiguration(environment: environment, homeDirectory: root, fallbackDirectories: [], isExecutableRegularFile: { _ in false })
+    }
 }
