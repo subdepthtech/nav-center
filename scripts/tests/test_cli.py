@@ -91,7 +91,9 @@ class CLITests(unittest.TestCase):
         ])
         self.assertEqual(tools[0]["state"], "override-invalid")
         self.assertEqual(tools[0]["environmentVariable"], "NAV_CENTER_ATSIM_BIN")
-        self.assertNotIn("/Users/", result.stdout)
+        self.assertIsNone(tools[0].get("resolvedPath"))
+        self.assertNotIn("/Users/", self.decoded_text(result.stdout))
+        self.assertNotIn(str(missing), self.decoded_text(result.stdout))
         self.assertEqual(self.workspace_listing(), before)
 
     def test_doctor_human_output_lists_every_tool_and_env_var(self):
@@ -120,8 +122,9 @@ class CLITests(unittest.TestCase):
         self.assertEqual(default.returncode, 0, default.stderr)
         self.assertEqual(json.loads(default.stdout)["workspace"]["path"], "<workspace>")
         self.assertIn("<workspace>", default.stdout)
-        self.assertNotIn(home, default.stdout)
-        self.assertNotIn(str(self.workspace), default.stdout)
+        redacted = self.decoded_text(default.stdout)
+        self.assertNotIn(home, redacted)
+        self.assertNotIn(str(self.workspace), redacted)
         alias = self.run_cli("feedback-diagnostics", "--redact", "--workspace", self.workspace)
         self.assertEqual(alias.returncode, 0, alias.stderr)
         self.assertEqual(json.loads(alias.stdout)["workspace"]["path"], "<workspace>")
@@ -151,13 +154,82 @@ class CLITests(unittest.TestCase):
                 payload = json.loads(result.stdout)
                 self.assertEqual(payload["workspace"]["path"], "<workspace>")
                 self.assertEqual(payload["recentLogs"], [])
-                self.assertNotIn("SYNTHETIC_TOKEN", result.stdout)
-                self.assertNotIn(str(self.workspace), result.stdout)
+                redacted = self.decoded_text(result.stdout)
+                self.assertNotIn("SYNTHETIC_TOKEN", redacted)
+                self.assertNotIn(str(self.workspace), redacted)
         opened = self.run_cli("feedback-diagnostics", "--include-unredacted", "--workspace", self.workspace)
         self.assertEqual(opened.returncode, 0, opened.stderr)
         opened_payload = json.loads(opened.stdout)
         self.assertEqual(opened_payload["workspace"]["path"], str(self.workspace))
         self.assertIn("SYNTHETIC_TOKEN_NOT_REAL", opened.stdout)
+
+    def test_redacted_doctor_and_feedback_hide_override_values(self):
+        self.assertEqual(self.run_cli("init-workspace", "--workspace", self.workspace).returncode, 0)
+        outside = self.root / "acme-contract" / "acme-bin" / "acme-atsim"
+        outside.parent.mkdir(parents=True)
+        outside.write_text("#!/bin/sh\nexit 0\n")
+        outside.chmod(0o755)
+        relative = "acme-clients/acme-client/acme-codex"
+        env = dict(self.env, NAV_CENTER_ATSIM_BIN=str(outside), DASHBOARD_CODEX_BIN=relative)
+        secrets = [
+            str(outside), relative, "acme-contract", "acme-bin", "acme-atsim",
+            "acme-clients", "acme-client", "acme-codex",
+        ]
+
+        doctor = subprocess.run(
+            [os.environ["NAVCENTERCTL"], "doctor", "--json", "--workspace", self.workspace],
+            env=env, capture_output=True, text=True, timeout=15,
+        )
+        self.assertEqual(doctor.returncode, 0, doctor.stderr)
+        doctor_payload = json.loads(doctor.stdout)
+        doctor_tools = {tool["tool"]: tool for tool in doctor_payload["tools"]}
+        self.assertEqual(doctor_tools["atsim"]["state"], "found")
+        self.assertEqual(doctor_tools["atsim"]["source"], "environment")
+        self.assertIsNone(doctor_tools["atsim"].get("resolvedPath"))
+        self.assertEqual(
+            doctor_tools["atsim"]["summary"],
+            "Found via NAV_CENTER_ATSIM_BIN (path hidden in redacted output)",
+        )
+        self.assertEqual(doctor_tools["codex"]["state"], "override-invalid")
+        self.assertIsNone(doctor_tools["codex"].get("resolvedPath"))
+        self.assertEqual(doctor_tools["codex"]["summary"], "DASHBOARD_CODEX_BIN must be an absolute path")
+        doctor_text = self.decoded_text(doctor.stdout)
+        for secret in secrets:
+            self.assertNotIn(secret, doctor_text)
+
+        feedback = subprocess.run(
+            [os.environ["NAVCENTERCTL"], "feedback-diagnostics", "--workspace", self.workspace],
+            env=env, capture_output=True, text=True, timeout=15,
+        )
+        self.assertEqual(feedback.returncode, 0, feedback.stderr)
+        feedback_payload = json.loads(feedback.stdout)
+        feedback_tools = {tool["tool"]: tool for tool in feedback_payload["tools"]}
+        self.assertIsNone(feedback_tools["atsim"].get("resolvedPath"))
+        self.assertEqual(
+            feedback_tools["atsim"]["summary"],
+            "Found via NAV_CENTER_ATSIM_BIN (path hidden in redacted output)",
+        )
+        self.assertIsNone(feedback_tools["codex"].get("resolvedPath"))
+        self.assertEqual(feedback_tools["codex"]["summary"], "DASHBOARD_CODEX_BIN must be an absolute path")
+        feedback_text = self.decoded_text(feedback.stdout)
+        for secret in secrets:
+            self.assertNotIn(secret, feedback_text)
+
+    def decoded_text(self, stdout):
+        values = []
+
+        def walk(value):
+            if isinstance(value, str):
+                values.append(value)
+            elif isinstance(value, dict):
+                for item in value.values():
+                    walk(item)
+            elif isinstance(value, list):
+                for item in value:
+                    walk(item)
+
+        walk(json.loads(stdout))
+        return "\n".join(values)
 
     def workspace_listing(self):
         return sorted(str(path.relative_to(self.workspace)) for path in self.workspace.rglob("*"))

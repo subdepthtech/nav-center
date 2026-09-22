@@ -90,7 +90,9 @@ final class WorkspaceFeatureTests: XCTestCase {
             appVersion: "0.1.0-beta",
             toolProbe: ToolProbeConfiguration(environment: ["PATH": ""], homeDirectory: home, fallbackDirectories: [], isExecutableRegularFile: { _ in false })
         ).report(redact: true)
-        let json = String(data: try JSONEncoder().encode(report), encoding: .utf8) ?? ""
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        let json = String(data: try encoder.encode(report), encoding: .utf8) ?? ""
 
         XCTAssertEqual(report.appVersion, "0.1.0-beta")
         XCTAssertTrue(report.workspace.exists)
@@ -121,12 +123,17 @@ final class WorkspaceFeatureTests: XCTestCase {
         XCTAssertEqual(report.tools.tools.map(\.tool), ExternalTool.allCases)
         let status = try XCTUnwrap(report.tools.tools.first { $0.tool == .pandoc })
         XCTAssertEqual(status.state, .found)
-        XCTAssertEqual(status.resolvedPath, "<home>/bin/pandoc")
-        XCTAssertTrue(status.summary.contains("<home>/bin/pandoc"))
+        XCTAssertEqual(status.source, .environment)
+        XCTAssertNil(status.resolvedPath)
+        XCTAssertEqual(status.summary, "Found via PANDOC_BIN (path hidden in redacted output)")
         XCTAssertFalse(status.summary.contains(home.path))
-        let json = String(decoding: try JSONEncoder().encode(report), as: UTF8.self)
+        XCTAssertFalse(status.summary.contains(pandoc.path))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        let json = String(decoding: try encoder.encode(report), as: UTF8.self)
         XCTAssertFalse(json.contains(home.path))
         XCTAssertFalse(json.contains("/Users/synthetic"))
+        XCTAssertFalse(json.contains(pandoc.path))
     }
 
     func testRedactedDiagnosticsOmitLogLinesAndUnredactedKeepsThem() throws {

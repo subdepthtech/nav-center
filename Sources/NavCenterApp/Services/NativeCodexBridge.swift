@@ -20,7 +20,8 @@ final class NativeCodexBridge {
     }
 
     private let repoRoot: URL
-    private let command: String
+    private let injectedCommand: String?
+    private let probeConfiguration: ToolProbeConfiguration?
     private let args = ["app-server", "--listen", "stdio://"]
     private let sessionLock = NSRecursiveLock()
     private let writeLock = NSLock()
@@ -41,9 +42,10 @@ final class NativeCodexBridge {
     private var activatingTurns = Set<String>()
     private var initialized: [String: Any] = [:]
 
-    init(repoRoot: URL, command: String? = nil, turnTimeout: TimeInterval = 600, requestTimeout: TimeInterval = 15, shutdownGrace: TimeInterval = 1) {
+    init(repoRoot: URL, command: String? = nil, probeConfiguration: ToolProbeConfiguration? = nil, turnTimeout: TimeInterval = 600, requestTimeout: TimeInterval = 15, shutdownGrace: TimeInterval = 1) {
         self.repoRoot = repoRoot
-        self.command = command ?? Self.resolveCodexCommand()
+        self.injectedCommand = command
+        self.probeConfiguration = probeConfiguration
         self.turnTimeout = turnTimeout
         self.requestTimeout = requestTimeout
         self.shutdownGrace = shutdownGrace
@@ -229,18 +231,14 @@ final class NativeCodexBridge {
         lock.lock(); let running = process?.isRunning == true; lock.unlock()
         if running { return }
         resetTerminatedProcess()
+        let launch = try codexLaunch()
         lock.lock()
         stdoutBuffer.removeAll(); stderrTail = ""; initialized = [:]
         queuedTurnNotifications.removeAll(); queuedApprovalRequests.removeAll(); activatingTurns.removeAll()
         lock.unlock()
         let process = CodexOwnedProcess()
-        if command.hasPrefix("/") {
-            process.executableURL = URL(fileURLWithPath: command)
-            process.arguments = args
-        } else {
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = [command] + args
-        }
+        process.executableURL = launch.executableURL
+        process.arguments = launch.arguments
         process.currentDirectoryURL = repoRoot
         let stdout = Pipe()
         let stderr = Pipe()
@@ -723,19 +721,25 @@ final class NativeCodexBridge {
         ]
     }
 
-    static func resolveCodexCommand(configuration: ToolProbeConfiguration = .init()) -> String {
+    static func resolveCodexCommand(configuration: ToolProbeConfiguration = .init()) throws -> String {
         let resolved = ToolProbe.resolve(.codex, configuration: configuration)
-        switch resolved.state {
-        case .found:
-            return resolved.resolvedPath ?? "codex"
-        case .overrideInvalid:
-            return resolved.resolvedPath ?? configuration.environment["DASHBOARD_CODEX_BIN"] ?? "codex"
-        case .missing, .builtIn:
-            if let override = configuration.environment["DASHBOARD_CODEX_BIN"], !override.isEmpty {
-                return override
-            }
-            return "codex"
+        guard resolved.state == .found, let path = resolved.resolvedPath, path.hasPrefix("/") else {
+            throw DashboardAPIError.serverUnavailable(ToolProbe.missingToolMessage(resolved, action: "Codex"))
         }
+        return path
+    }
+
+    /// Probe resolution runs on every start unless a test injected `command`.
+    /// The environment launcher below is only that injected non-absolute seam.
+    private func codexLaunch() throws -> (executableURL: URL, arguments: [String]) {
+        if let injectedCommand {
+            if injectedCommand.hasPrefix("/") {
+                return (URL(fileURLWithPath: injectedCommand), args)
+            }
+            return (URL(fileURLWithPath: "/usr/bin/env"), [injectedCommand] + args)
+        }
+        let path = try Self.resolveCodexCommand(configuration: probeConfiguration ?? ToolProbeConfiguration())
+        return (URL(fileURLWithPath: path), args)
     }
 
     private static func codexAccount(_ value: Any?) -> CodexAccount? {

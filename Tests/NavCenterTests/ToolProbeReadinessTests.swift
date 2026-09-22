@@ -276,10 +276,12 @@ final class ToolProbeReadinessTests: XCTestCase {
         let redacted = report.redacted(homeDirectory: home)
         let pandoc = redacted.tools.first { $0.tool == .pandoc }
         let atsim = redacted.tools.first { $0.tool == .atsim }
-        XCTAssertEqual(pandoc?.resolvedPath, "<home>/bin/pandoc")
-        XCTAssertEqual(pandoc?.summary, "found at <home>/bin/pandoc (environment override)")
+        XCTAssertEqual(pandoc?.source, .environment)
+        XCTAssertNil(pandoc?.resolvedPath)
+        XCTAssertEqual(pandoc?.summary, "Found via PANDOC_BIN (path hidden in redacted output)")
         XCTAssertEqual(atsim?.state, .overrideInvalid)
-        XCTAssertEqual(atsim?.resolvedPath, "<home>/missing-atsim")
+        XCTAssertNil(atsim?.resolvedPath)
+        XCTAssertEqual(atsim?.summary, "NAV_CENTER_ATSIM_BIN is not an executable file")
         XCTAssertFalse(redacted.tools.contains { ($0.resolvedPath ?? "").contains("/Users/synthetic") || $0.summary.contains("/Users/synthetic") })
     }
 
@@ -293,13 +295,79 @@ final class ToolProbeReadinessTests: XCTestCase {
         )).redacted(homeDirectory: home)
         let atsim = try XCTUnwrap(redacted.tools.first { $0.tool == .atsim })
         XCTAssertEqual(atsim.state, .found)
-        XCTAssertEqual(atsim.resolvedPath, "<home>/bin/atsim")
-        XCTAssertEqual(atsim.summary, "found at <home>/bin/atsim (environment override)")
+        XCTAssertEqual(atsim.source, .environment)
+        XCTAssertNil(atsim.resolvedPath)
+        XCTAssertEqual(atsim.summary, "Found via NAV_CENTER_ATSIM_BIN (path hidden in redacted output)")
         XCTAssertEqual(PathRedactor.redact(other, homeDirectory: home), "<home>/bin/atsim")
         XCTAssertEqual(PathRedactor.redact("owner synthetic at /opt/synthetic/tool", homeDirectory: home), "owner <user> at /opt/<user>/tool")
-        XCTAssertFalse(atsim.resolvedPath?.contains("/Users/") == true)
         XCTAssertFalse(atsim.summary.contains("other-person"))
+        XCTAssertFalse(atsim.summary.contains(other))
         XCTAssertFalse(redacted.tools.contains { ($0.resolvedPath ?? "").contains("/Users/") || $0.summary.contains("/Users/") })
+
+        let ruby = ToolAvailabilityReport(tools: [
+            ToolProbe.resolve(.ruby, configuration: ToolProbeConfiguration(
+                environment: ["PATH": "/Users/other-person/bin"],
+                homeDirectory: home,
+                fallbackDirectories: [],
+                isExecutableRegularFile: { $0 == "/Users/other-person/bin/ruby" }
+            ))
+        ]).redacted(homeDirectory: home).tools[0]
+        XCTAssertEqual(ruby.source, .path)
+        XCTAssertEqual(ruby.resolvedPath, "<home>/bin/ruby")
+        XCTAssertEqual(ruby.summary, "found at <home>/bin/ruby (PATH)")
+        XCTAssertFalse(ruby.summary.contains("other-person"))
+    }
+
+    func testRedactedReportHidesOverrideOutsideHomeAndRelativeInvalidOverride() throws {
+        let outside = "/opt/acme-contract/acme-bin/acme-atsim"
+        let relative = "acme-clients/acme-client/acme-codex"
+        let homePath = "/Users/synthetic/bin/ruby"
+        let fallbackPath = "/Users/synthetic/.local/bin/pdftotext"
+        let chromePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        let redacted = ToolProbe.report(configuration: ToolProbeConfiguration(
+            environment: [
+                "PATH": "/Users/synthetic/bin",
+                "NAV_CENTER_ATSIM_BIN": outside,
+                "DASHBOARD_CODEX_BIN": relative
+            ],
+            homeDirectory: home,
+            fallbackDirectories: ["/Users/synthetic/.local/bin"],
+            isExecutableRegularFile: { path in
+                path == outside || path == homePath || path == fallbackPath || path == chromePath
+            }
+        )).redacted(homeDirectory: home)
+        let atsim = try XCTUnwrap(redacted.tools.first { $0.tool == .atsim })
+        let codex = try XCTUnwrap(redacted.tools.first { $0.tool == .codex })
+        let ruby = try XCTUnwrap(redacted.tools.first { $0.tool == .ruby })
+        let pdftotext = try XCTUnwrap(redacted.tools.first { $0.tool == .pdftotext })
+        let chrome = try XCTUnwrap(redacted.tools.first { $0.tool == .chrome })
+        XCTAssertEqual(atsim.state, .found)
+        XCTAssertEqual(atsim.source, .environment)
+        XCTAssertNil(atsim.resolvedPath)
+        XCTAssertEqual(atsim.summary, "Found via NAV_CENTER_ATSIM_BIN (path hidden in redacted output)")
+        XCTAssertEqual(codex.state, .overrideInvalid)
+        XCTAssertNil(codex.resolvedPath)
+        XCTAssertEqual(codex.summary, "DASHBOARD_CODEX_BIN must be an absolute path")
+        XCTAssertEqual(ruby.source, .path)
+        XCTAssertEqual(ruby.resolvedPath, "<home>/bin/ruby")
+        XCTAssertEqual(ruby.summary, "found at <home>/bin/ruby (PATH)")
+        XCTAssertEqual(pdftotext.source, .fallback)
+        XCTAssertEqual(pdftotext.resolvedPath, "<home>/.local/bin/pdftotext")
+        XCTAssertEqual(pdftotext.summary, "found at <home>/.local/bin/pdftotext (fallback directory)")
+        XCTAssertEqual(chrome.source, .defaultPath)
+        XCTAssertEqual(chrome.resolvedPath, chromePath)
+        XCTAssertEqual(chrome.summary, "found at \(chromePath) (default path)")
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let json = String(decoding: try encoder.encode(redacted), as: UTF8.self)
+        let secrets = [outside, relative, "acme-contract", "acme-bin", "acme-atsim", "acme-clients", "acme-client", "acme-codex"]
+        for secret in secrets {
+            XCTAssertFalse(json.contains(secret), secret)
+            XCTAssertFalse(redacted.tools.contains { status in
+                (status.resolvedPath ?? "").contains(secret) || status.summary.contains(secret) || status.installHint.contains(secret)
+            }, secret)
+        }
     }
 
     func testMissingToolMessageNamesToolEnvironmentVariableAndInstallHint() {

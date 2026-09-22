@@ -135,17 +135,38 @@ public struct ToolAvailabilityReport: Codable, Equatable, Sendable {
     }
 
     public func redacted(homeDirectory: URL) -> ToolAvailabilityReport {
-        ToolAvailabilityReport(tools: tools.map { status in
-            ToolStatus(
+        ToolAvailabilityReport(tools: tools.map { redactedStatus($0, homeDirectory: homeDirectory) })
+    }
+
+    private func redactedStatus(_ status: ToolStatus, homeDirectory: URL) -> ToolStatus {
+        if status.source == .environment || status.state == .overrideInvalid {
+            let variable = status.environmentVariable ?? status.tool.environmentVariable ?? "the override"
+            let summary: String
+            if status.state == .overrideInvalid {
+                let absolute = "\(variable) must be an absolute path"
+                summary = status.summary == absolute ? absolute : "\(variable) is not an executable file"
+            } else {
+                summary = "Found via \(variable) (path hidden in redacted output)"
+            }
+            return ToolStatus(
                 tool: status.tool,
                 state: status.state,
-                resolvedPath: status.resolvedPath.map { PathRedactor.redact($0, homeDirectory: homeDirectory) },
+                resolvedPath: nil,
                 source: status.source,
                 environmentVariable: status.environmentVariable,
                 installHint: status.installHint,
-                summary: PathRedactor.redact(status.summary, homeDirectory: homeDirectory)
+                summary: summary
             )
-        })
+        }
+        return ToolStatus(
+            tool: status.tool,
+            state: status.state,
+            resolvedPath: status.resolvedPath.map { PathRedactor.redact($0, homeDirectory: homeDirectory) },
+            source: status.source,
+            environmentVariable: status.environmentVariable,
+            installHint: status.installHint,
+            summary: PathRedactor.redact(status.summary, homeDirectory: homeDirectory)
+        )
     }
 
     public init(from decoder: Decoder) throws {

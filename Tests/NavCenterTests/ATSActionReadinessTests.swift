@@ -296,6 +296,36 @@ final class ATSActionReadinessTests: XCTestCase {
         XCTAssertTrue(result.stderrTail.contains(stderrMarker))
     }
 
+    func testBuiltInExportRefusesWhenRunnerEnvironmentDiffersFromProbe() throws {
+        let marker = root.appendingPathComponent("export-spawned")
+        let exporter = root.appendingPathComponent("acme-export")
+        let script = "#!/bin/sh\nprintf spawned > '\(marker.path)'\nexit 0\n"
+        try Data(script.utf8).write(to: exporter)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: exporter.path)
+        let probe = ToolProbeConfiguration(
+            environment: ["PATH": ""],
+            homeDirectory: root,
+            fallbackDirectories: [],
+            isExecutableRegularFile: { _ in false }
+        )
+        let environment = ["PATH": "", "NAV_CENTER_EXPORT_BIN": exporter.path]
+        let result = try PackageActionRunner(repoRoot: root, environment: environment, toolProbe: probe).run(
+            packageName: packageName,
+            actionKey: "refresh-resume",
+            confirmed: true
+        )
+        XCTAssertEqual(result.status, "failed")
+        XCTAssertNil(result.exitCode)
+        XCTAssertEqual(
+            result.message,
+            "Resume PDF refresh needs Export tool, but NAV_CENTER_EXPORT_BIN does not point to an executable file. Fix or unset NAV_CENTER_EXPORT_BIN."
+        )
+        XCTAssertFalse(result.message.contains(exporter.path))
+        XCTAssertFalse(result.message.contains("acme-export"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: package.appendingPathComponent("artifacts/Resume_\(packageName).pdf").path))
+    }
+
     func testInvalidExportOverrideFailsRefreshWithNamedMessage() throws {
         let missing = root.appendingPathComponent("missing-exporter").path
         let probe = isolatedProbe(environment: ["PATH": "", "NAV_CENTER_EXPORT_BIN": missing])

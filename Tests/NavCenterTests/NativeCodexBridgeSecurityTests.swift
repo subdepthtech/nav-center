@@ -238,7 +238,7 @@ final class NativeCodexBridgeSecurityTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: replacementPackage.appendingPathComponent("posting.md")), "original posting")
     }
 
-    func testCodexCommandResolutionUsesToolProbeOrder() {
+    func testCodexCommandResolutionUsesToolProbeOrder() throws {
         let home = URL(fileURLWithPath: "/Users/synthetic", isDirectory: true)
         let fallbacks = ["/opt/homebrew/bin", "/usr/local/bin", "/Users/synthetic/.local/bin"]
 
@@ -248,7 +248,7 @@ final class NativeCodexBridgeSecurityTests: XCTestCase {
             fallbackDirectories: fallbacks,
             isExecutableRegularFile: { $0 == "/opt/custom/codex" }
         )
-        XCTAssertEqual(NativeCodexBridge.resolveCodexCommand(configuration: override), "/opt/custom/codex")
+        XCTAssertEqual(try NativeCodexBridge.resolveCodexCommand(configuration: override), "/opt/custom/codex")
 
         let pathBeforeFallback = ToolProbeConfiguration(
             environment: ["PATH": "/usr/bin:/opt/custom/bin"],
@@ -256,7 +256,7 @@ final class NativeCodexBridgeSecurityTests: XCTestCase {
             fallbackDirectories: fallbacks,
             isExecutableRegularFile: { $0 == "/opt/custom/bin/codex" || $0 == "/opt/homebrew/bin/codex" }
         )
-        XCTAssertEqual(NativeCodexBridge.resolveCodexCommand(configuration: pathBeforeFallback), "/opt/custom/bin/codex")
+        XCTAssertEqual(try NativeCodexBridge.resolveCodexCommand(configuration: pathBeforeFallback), "/opt/custom/bin/codex")
 
         let searched = CodexCommandPathRecorder()
         let fallbackOnly = ToolProbeConfiguration(
@@ -269,7 +269,7 @@ final class NativeCodexBridgeSecurityTests: XCTestCase {
             }
         )
         XCTAssertEqual(
-            NativeCodexBridge.resolveCodexCommand(configuration: fallbackOnly),
+            try NativeCodexBridge.resolveCodexCommand(configuration: fallbackOnly),
             "/Users/synthetic/.local/bin/codex"
         )
         XCTAssertEqual(searched.paths, fallbacks.map { $0 + "/codex" })
@@ -280,7 +280,7 @@ final class NativeCodexBridgeSecurityTests: XCTestCase {
             fallbackDirectories: fallbacks,
             isExecutableRegularFile: { _ in false }
         )
-        XCTAssertEqual(NativeCodexBridge.resolveCodexCommand(configuration: invalidOverride), "/missing/codex")
+        try assertCodexRefusesWithoutSpawning(configuration: invalidOverride)
 
         let relativeOverride = ToolProbeConfiguration(
             environment: ["DASHBOARD_CODEX_BIN": "tools/codex", "PATH": "/usr/bin"],
@@ -288,7 +288,7 @@ final class NativeCodexBridgeSecurityTests: XCTestCase {
             fallbackDirectories: fallbacks,
             isExecutableRegularFile: { _ in true }
         )
-        XCTAssertEqual(NativeCodexBridge.resolveCodexCommand(configuration: relativeOverride), "tools/codex")
+        try assertCodexRefusesWithoutSpawning(configuration: relativeOverride, decoyRelativePath: "tools/codex")
 
         let missing = ToolProbeConfiguration(
             environment: ["PATH": "/usr/bin"],
@@ -296,7 +296,7 @@ final class NativeCodexBridgeSecurityTests: XCTestCase {
             fallbackDirectories: fallbacks,
             isExecutableRegularFile: { _ in false }
         )
-        XCTAssertEqual(NativeCodexBridge.resolveCodexCommand(configuration: missing), "codex")
+        try assertCodexRefusesWithoutSpawning(configuration: missing, decoyRelativePath: "codex")
 
         let bareNameMissing = ToolProbeConfiguration(
             environment: ["DASHBOARD_CODEX_BIN": "custom-codex", "PATH": "/usr/bin"],
@@ -304,7 +304,105 @@ final class NativeCodexBridgeSecurityTests: XCTestCase {
             fallbackDirectories: fallbacks,
             isExecutableRegularFile: { _ in false }
         )
-        XCTAssertEqual(NativeCodexBridge.resolveCodexCommand(configuration: bareNameMissing), "custom-codex")
+        try assertCodexRefusesWithoutSpawning(configuration: bareNameMissing, decoyRelativePath: "custom-codex")
+    }
+
+    func testEmptyOrRelativePathEntryIsNeverUsed() throws {
+        let home = URL(fileURLWithPath: "/Users/synthetic", isDirectory: true)
+        let searched = CodexCommandPathRecorder()
+        let configuration = ToolProbeConfiguration(
+            environment: ["PATH": ":.:relbin:/opt/codex-not-present"],
+            homeDirectory: home,
+            fallbackDirectories: [],
+            isExecutableRegularFile: { path in
+                searched.record(path)
+                return false
+            }
+        )
+        XCTAssertThrowsError(try NativeCodexBridge.resolveCodexCommand(configuration: configuration)) { error in
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("Codex"), message)
+            XCTAssertTrue(message.contains("DASHBOARD_CODEX_BIN"), message)
+        }
+        XCTAssertEqual(searched.paths, ["/opt/codex-not-present/codex"])
+        XCTAssertTrue(searched.paths.allSatisfy { $0.hasPrefix("/") })
+
+        let empty = ToolProbeConfiguration(
+            environment: ["PATH": ""],
+            homeDirectory: home,
+            fallbackDirectories: [],
+            isExecutableRegularFile: { _ in
+                XCTFail("An empty PATH produced a candidate")
+                return true
+            }
+        )
+        try assertCodexRefusesWithoutSpawning(configuration: empty, decoyRelativePath: "codex")
+        try assertCodexRefusesWithoutSpawning(configuration: configuration, decoyRelativePath: "codex")
+        try assertCodexRefusesWithoutSpawning(configuration: configuration, decoyRelativePath: "relbin/codex")
+    }
+
+    func testStartResolvesCodexInstalledIntoFallbackDirectoryAfterARefusal() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("nav-center-codex-later-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fallback = root.appendingPathComponent("fallback-bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: fallback, withIntermediateDirectories: true)
+        let marker = root.appendingPathComponent("launched")
+        let configuration = ToolProbeConfiguration(
+            environment: ["PATH": ""],
+            homeDirectory: root,
+            fallbackDirectories: [fallback.path]
+        )
+        let bridge = NativeCodexBridge(repoRoot: root, probeConfiguration: configuration, turnTimeout: 1, requestTimeout: 2, shutdownGrace: 0.1)
+        defer { bridge.shutdown() }
+
+        XCTAssertThrowsError(try bridge.status()) { error in
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("Codex"), message)
+            XCTAssertTrue(message.contains("DASHBOARD_CODEX_BIN"), message)
+            XCTAssertFalse(message.contains("could not complete startup"), message)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+
+        let codex = fallback.appendingPathComponent("codex")
+        let script = "#!/bin/sh\nprintf '%s\\n' \"$0\" > '\(marker.path)'\nexit 0\n"
+        try Data(script.utf8).write(to: codex)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: codex.path)
+
+        XCTAssertEqual(try NativeCodexBridge.resolveCodexCommand(configuration: configuration), codex.path)
+        XCTAssertThrowsError(try bridge.status()) { error in
+            XCTAssertTrue(error.localizedDescription.contains("could not complete startup"), error.localizedDescription)
+            XCTAssertFalse(error.localizedDescription.contains("was not found"), error.localizedDescription)
+        }
+        XCTAssertEqual(try String(contentsOf: marker).trimmingCharacters(in: .whitespacesAndNewlines), codex.path)
+    }
+
+    private func assertCodexRefusesWithoutSpawning(
+        configuration: ToolProbeConfiguration,
+        decoyRelativePath: String? = nil,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("nav-center-codex-refuse-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let marker = root.appendingPathComponent("spawned-marker")
+        if let decoyRelativePath {
+            let decoy = root.appendingPathComponent(decoyRelativePath)
+            try FileManager.default.createDirectory(at: decoy.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let script = "#!/bin/sh\nprintf '%s\\n' \"$0\" > '\(marker.path)'\nexit 0\n"
+            try Data(script.utf8).write(to: decoy)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: decoy.path)
+        }
+        let bridge = NativeCodexBridge(repoRoot: root, probeConfiguration: configuration, turnTimeout: 1, requestTimeout: 0.5, shutdownGrace: 0.05)
+        defer { bridge.shutdown() }
+        let expected = ToolProbe.missingToolMessage(ToolProbe.resolve(.codex, configuration: configuration), action: "Codex")
+        XCTAssertTrue(expected.contains("Codex"), expected, file: file, line: line)
+        XCTAssertTrue(expected.contains("DASHBOARD_CODEX_BIN"), expected, file: file, line: line)
+        XCTAssertThrowsError(try bridge.status(), file: file, line: line) { error in
+            XCTAssertEqual(error as? DashboardAPIError, .serverUnavailable(expected), file: file, line: line)
+            XCTAssertFalse(error.localizedDescription.contains("could not complete startup"), error.localizedDescription, file: file, line: line)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path), "Codex spawn wrote \(marker.path)", file: file, line: line)
     }
 
     private func makeFixture() throws -> (root: URL, package: URL, stagingParent: URL) {

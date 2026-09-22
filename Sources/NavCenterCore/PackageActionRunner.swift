@@ -352,8 +352,20 @@ public final class PackageActionRunner {
         case .found:
             if let path = resolved.resolvedPath { command.executable = path }
             return nil
-        case .builtIn where tool == .exportTool:
+        case .builtIn where tool == .exportTool && command.executable == "native-export":
             return nil
+        case .builtIn:
+            let variable = ExternalTool.exportTool.environmentVariable ?? "the override"
+            let invalid = ToolStatus(
+                tool: .exportTool,
+                state: .overrideInvalid,
+                resolvedPath: nil,
+                source: nil,
+                environmentVariable: ExternalTool.exportTool.environmentVariable,
+                installHint: ExternalTool.exportTool.installHint,
+                summary: "\(variable) is not an executable file"
+            )
+            return ToolProbe.missingToolMessage(invalid, action: actionName)
         default:
             return ToolProbe.missingToolMessage(resolved, action: actionName)
         }

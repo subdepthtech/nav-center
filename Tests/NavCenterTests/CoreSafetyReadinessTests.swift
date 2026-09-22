@@ -332,8 +332,10 @@ final class CoreSafetyReadinessTests: XCTestCase {
             fallbackDirectories: []
         )
         let report = FeedbackDiagnostics(workspaceRoot: root, homeDirectory: home, toolProbe: probe).report(redact: true)
-        let json = String(decoding: try JSONEncoder().encode(report), as: UTF8.self)
-        let toolsJSON = String(decoding: try JSONEncoder().encode(report.tools), as: UTF8.self)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        let json = String(decoding: try encoder.encode(report), as: UTF8.self)
+        let toolsJSON = String(decoding: try encoder.encode(report.tools), as: UTF8.self)
         XCTAssertEqual(report.workspace.path, "<workspace>")
         XCTAssertTrue(report.recentLogs.isEmpty)
         XCTAssertFalse(json.contains("SYNTHETIC_TOKEN"))
@@ -344,7 +346,8 @@ final class CoreSafetyReadinessTests: XCTestCase {
         XCTAssertFalse(toolsJSON.contains(override.path))
         let atsim = try XCTUnwrap(report.tools.tools.first { $0.tool == .atsim })
         XCTAssertEqual(atsim.state, .found)
-        XCTAssertEqual(atsim.resolvedPath, "<home>/bin/atsim")
+        XCTAssertNil(atsim.resolvedPath)
+        XCTAssertEqual(atsim.summary, "Found via NAV_CENTER_ATSIM_BIN (path hidden in redacted output)")
         XCTAssertFalse(json.contains(root.lastPathComponent))
     }
 }
