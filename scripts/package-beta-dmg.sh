@@ -20,7 +20,7 @@ if [[ "$MODE" == --distribution ]]; then
   gitleaks dir "$ROOT_DIR" --redact
   gitleaks git "$ROOT_DIR" --log-opts="--all" --redact
 fi
-VERSION="${NAV_CENTER_VERSION:-0.1.0-beta}"
+VERSION="${NAV_CENTER_VERSION:-0.1.0-beta.1}"
 BUILD_NUMBER="${NAV_CENTER_BUILD:-1}"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9]+([.-][A-Za-z0-9]+)*)?$ ]] || { echo "Invalid NAV_CENTER_VERSION." >&2; exit 2; }
 [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "NAV_CENTER_BUILD must be a positive integer." >&2; exit 2; }

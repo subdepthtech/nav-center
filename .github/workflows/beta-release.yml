@@ -111,17 +111,14 @@ jobs:
             xcodebuild -version
           } > dist/BUILD.txt
       - name: Verify the packaged app from a read-only mount
+        env:
+          NAV_CENTER_VERSION: ${{ inputs.version }}
+          NAV_CENTER_BUILD: ${{ inputs.build }}
         run: |
           set -euo pipefail
           images=(dist/*.dmg)
           [[ ${#images[@]} -eq 1 && -f "${images[0]}" ]]
-          MOUNTPOINT="$RUNNER_TEMP/nav-center-artifact-mount"
-          mkdir "$MOUNTPOINT"
-          trap 'hdiutil detach "$MOUNTPOINT"' EXIT
-          hdiutil attach -readonly -nobrowse -mountpoint "$MOUNTPOINT" "${images[0]}"
-          codesign --verify --deep --strict "$MOUNTPOINT/Nav Center.app"
-          spctl -a -vv -t execute "$MOUNTPOINT/Nav Center.app"
-          xcrun stapler validate "${images[0]}"
+          scripts/verify-release-artifact.sh "${images[0]}" --expect-version "$NAV_CENTER_VERSION" --expect-build "$NAV_CENTER_BUILD"
           (cd dist && shasum -a 256 -c ./*.dmg.sha256)
       - name: Upload validated beta artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

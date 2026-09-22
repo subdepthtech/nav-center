@@ -64,7 +64,7 @@ class ClaudeReleaseEvidenceTests(unittest.TestCase):
 
     def assert_rejected(self, result):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertNotIn("Artifact-level gates passed", result.stdout)
+        self.assertNotIn("DMG-only checks passed", result.stdout)
 
     def test_matching_artifact_passes_with_clean_machine_limitations(self):
         result = self.run_check()
