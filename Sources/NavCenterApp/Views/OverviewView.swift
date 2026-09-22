@@ -69,6 +69,7 @@ struct OverviewView: View {
                         Label("Import Source Docs", systemImage: "square.and.arrow.down")
                     }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier(AccessibilityID.intakeImport)
                     .disabled(store.isImportingDocuments)
 
                     if store.isImportingDocuments {

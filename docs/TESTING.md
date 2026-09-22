@@ -154,3 +154,34 @@ Before accepting an import, confirm the report revision, nonzero maintained sour
 ## Manual and release gaps
 
 The current UX tests exercise models and state transitions. They do not drive the native UI, establish VoiceOver/keyboard accessibility, validate a live signed-in Codex session, or prove real-device behavior. The brief launch smoke check in [Release](RELEASE.md) proves only short-lived process survival. Real conversion, UI/accessibility, minimum-macOS, architecture, signed/notarized download and clean-device install/update/uninstall evidence remain separate checks in the [public release checklist](PUBLIC_RELEASE_CHECKLIST.md). Preserve useful temporary evidence until review is complete, then remove only the disposable directory created for the run.
+
+## GUI and accessibility gate (manual)
+
+Run this checklist once on the beta candidate on a Mac with VoiceOver and a disposable workspace. Record Pass or Fail, observations, candidate version, macOS version, and tester in `docs/setup-evidence/beta-<version>/accessibility-checklist.md`. This checklist is a manual gate; a successful Swift test run does not fill in its results.
+
+| Check | Expected result | Pass/Fail |
+| --- | --- | --- |
+| VoiceOver sidebar and toolbar tab order | Each of the seven sections, search field, and refresh control is reachable and named. |  |
+| VoiceOver package rail tab order | Rail actions, confirmation primary/cancel controls, and status buttons are reachable and named. |  |
+| VoiceOver status history | Status changes are read in order with old and new status and timestamp. |  |
+| VoiceOver cleanup sheet | Preview, Remove, sheet Cancel, and sheet Remove are reachable; the removal consequence is announced. |  |
+| VoiceOver Codex panel | Launcher, account controls, input, edit toggles, Send, Stop when present, and Close are reachable and named. |  |
+| Rail, status, cleanup, and Codex announcements | Rail confirmation, status update, cleanup sheet, and Codex control purpose/state are understandable when spoken. |  |
+| ⌘1 Overview | Opens Overview and closes package detail. |  |
+| ⌘2 Applications | Opens Applications and closes package detail. |  |
+| ⌘3 Packages | Opens Packages and closes package detail. |  |
+| ⌘4 Job Searches | Opens Job Searches and closes package detail. |  |
+| ⌘5 Master Resume | Opens Master Resume and closes package detail. |  |
+| ⌘6 Exports | Opens Exports and closes package detail. |  |
+| ⌘7 Settings | Opens Settings and closes package detail. |  |
+| ⌘, Settings | Opens the Settings destination in the same window. |  |
+| ⌘[ Back to List | Closes package detail; unavailable without an open package. |  |
+| ⌘F Find | Focuses the toolbar application search. |  |
+| ⌘⇧C Toggle Codex Panel | Opens or closes the panel; input is focused on open. |  |
+| ⌘⇧A Run ATS Scan… | Opens the package rail confirmation and focuses its primary button; does not run the scan. |  |
+| ⌘⇧E Export Artifacts… | Opens the package rail confirmation and focuses its primary button; does not export. |  |
+| ⌘R Refresh Dashboard | Refreshes local dashboard data. |  |
+| Help → Copy Redacted Diagnostics | Copies redacted JSON and shows a transient confirmation; no private workspace path or document contents appear. |  |
+| 820×620 minimum window | Review pane and Codex panel remain visible without clipping; scrollable content stays reachable. |  |
+| Reduce Motion | Codex open and close remain usable with reduced animation. |  |
+| Full Keyboard Access | Every actionable control, including menus, sheets, and icon buttons, can be reached and operated. |  |

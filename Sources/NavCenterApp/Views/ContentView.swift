@@ -5,7 +5,8 @@ import NavCenterCore
 struct ContentView: View {
     @EnvironmentObject private var store: DashboardStore
     @State private var selection: DashboardDestination = .overview
-    @State private var showingCodex = false
+    @FocusState private var searchFocused: Bool
+    @State private var noticeDismissal: Task<Void, Never>?
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -13,6 +14,8 @@ struct ContentView: View {
                 List(DashboardDestination.allCases, selection: sidebarSelection) { destination in
                     Label(destination.title, systemImage: destination.systemImage)
                         .tag(destination)
+                        .accessibilityIdentifier(AccessibilityID.sidebar(destination))
+                        .accessibilityLabel(destination.title)
                 }
                 .listStyle(.sidebar)
                 .navigationTitle("Nav Center")
@@ -60,6 +63,9 @@ struct ContentView: View {
                     ToolbarItemGroup {
                         TextField("Search applications", text: $store.applicationSearch)
                             .textFieldStyle(.roundedBorder)
+                            .focused($searchFocused)
+                            .accessibilityIdentifier(AccessibilityID.toolbarSearch)
+                            .accessibilityLabel("Search applications")
                             .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
 
                         Button {
@@ -67,6 +73,7 @@ struct ContentView: View {
                         } label: {
                             Label("Refresh", systemImage: "arrow.clockwise")
                         }
+                        .accessibilityIdentifier(AccessibilityID.toolbarRefresh)
                         .help("Refresh local tracker and package data")
                         .disabled(store.isLoading)
                     }
@@ -84,15 +91,44 @@ struct ContentView: View {
                     Button("OK") {
                         store.errorMessage = nil
                     }
+                    .accessibilityIdentifier(AccessibilityID.dashboardErrorOK)
                 } message: {
                     Text(store.errorMessage ?? "")
                 }
             }
 
-            CodexChatLauncher(isPresented: $showingCodex)
-                .environmentObject(store)
-                .padding(22)
-                .zIndex(1)
+            GeometryReader { proxy in
+                CodexChatLauncher(isPresented: $store.isCodexPanelPresented, windowHeight: proxy.size.height)
+                    .environmentObject(store)
+                    .padding(22)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
+            .zIndex(1)
+        }
+        .onChange(of: store.requestedDestination) { _ in
+            if let destination = store.applyRequestedDestination() { selection = destination }
+        }
+        .onChange(of: store.searchFocusRequest) { _ in searchFocused = true }
+        .onChange(of: store.noticeMessage) { message in
+            noticeDismissal?.cancel()
+            guard message != nil else { return }
+            noticeDismissal = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                if !Task.isCancelled { store.noticeMessage = nil }
+            }
+        }
+        .overlay(alignment: .top) {
+            if let message = store.noticeMessage {
+                HStack {
+                    Text(message)
+                    Button("Dismiss") { store.noticeMessage = nil }
+                        .accessibilityIdentifier(AccessibilityID.statusBannerDismiss)
+                        .help("Dismiss diagnostics notice")
+                }
+                .padding(12)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .padding()
+            }
         }
         .onChange(of: store.applicationSearch) { query in
             guard !query.isEmpty else { return }
@@ -182,11 +218,13 @@ private struct PackagesWorkspaceView: View {
                 Button("Cancel") {
                     cleanupReview = nil
                 }
+                .accessibilityIdentifier(AccessibilityID.cleanupSheetCancel)
                 .keyboardShortcut(.cancelAction)
                 Button("Remove \(count) Packages", role: .destructive) {
                     Task { await store.applyPackageCleanup(olderThanDays: request.preview.olderThanDays, deleteTracked: true, confirmedPreview: request.preview) }
                     cleanupReview = nil
                 }
+                .accessibilityIdentifier(AccessibilityID.cleanupSheetConfirm)
             }
         }
         .padding(20)
@@ -288,6 +326,7 @@ private struct PackagesWorkspaceView: View {
             }
             .buttonStyle(.bordered)
             .disabled(store.isLoadingCleanupPreview || store.isRunningCleanup)
+            .accessibilityIdentifier(AccessibilityID.cleanupPreview)
             .help("Preview packages older than 7 days")
 
             Button(role: .destructive) {
@@ -299,6 +338,7 @@ private struct PackagesWorkspaceView: View {
             }
             .buttonStyle(.bordered)
             .disabled(cleanupCandidates.isEmpty || store.isLoadingCleanupPreview || store.isRunningCleanup)
+            .accessibilityIdentifier(AccessibilityID.cleanupRemove)
             .help("Remove previewed packages")
         }
     }
@@ -381,31 +421,32 @@ private struct JobDescriptionPastePanel: View {
             VStack(alignment: .leading, spacing: 12) {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 10) {
-                        TextField("Company", text: $company)
-                        TextField("Role", text: $role)
+                        TextField("Company", text: $company).accessibilityIdentifier(AccessibilityID.intakeCompany)
+                        TextField("Role", text: $role).accessibilityIdentifier(AccessibilityID.intakeRole)
                     }
                     VStack(alignment: .leading, spacing: 10) {
-                        TextField("Company", text: $company)
-                        TextField("Role", text: $role)
+                        TextField("Company", text: $company).accessibilityIdentifier(AccessibilityID.intakeCompany)
+                        TextField("Role", text: $role).accessibilityIdentifier(AccessibilityID.intakeRole)
                     }
                 }
                 .textFieldStyle(.roundedBorder)
 
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 10) {
-                        TextField("Source URL", text: $sourceURL)
-                        TextField("Location", text: $location)
-                        TextField("Salary", text: $salary)
+                        TextField("Source URL", text: $sourceURL).accessibilityIdentifier(AccessibilityID.intakeSourceURL)
+                        TextField("Location", text: $location).accessibilityIdentifier(AccessibilityID.intakeLocation)
+                        TextField("Salary", text: $salary).accessibilityIdentifier(AccessibilityID.intakeSalary)
                     }
                     VStack(alignment: .leading, spacing: 10) {
-                        TextField("Source URL", text: $sourceURL)
-                        TextField("Location", text: $location)
-                        TextField("Salary", text: $salary)
+                        TextField("Source URL", text: $sourceURL).accessibilityIdentifier(AccessibilityID.intakeSourceURL)
+                        TextField("Location", text: $location).accessibilityIdentifier(AccessibilityID.intakeLocation)
+                        TextField("Salary", text: $salary).accessibilityIdentifier(AccessibilityID.intakeSalary)
                     }
                 }
                 .textFieldStyle(.roundedBorder)
 
                 TextEditor(text: $postingText)
+                    .accessibilityIdentifier(AccessibilityID.intakePosting)
                     .accessibilityLabel("Full job description")
                     .font(.system(.body, design: .monospaced))
                     .frame(minHeight: 220)
@@ -423,6 +464,7 @@ private struct JobDescriptionPastePanel: View {
                     }
 
                 Toggle("Create with Codex automation", isOn: $runCodexAutomation)
+                    .accessibilityIdentifier(AccessibilityID.intakeAutomation)
                     .toggleStyle(.checkbox)
 
                 if runCodexAutomation {
@@ -433,6 +475,7 @@ private struct JobDescriptionPastePanel: View {
                         } label: {
                             Label("Check", systemImage: "waveform.path.ecg")
                         }
+                        .accessibilityIdentifier(AccessibilityID.intakeRefreshCodex)
                         .disabled(store.isCodexLoading)
 
                         if !codexReady {
@@ -441,10 +484,12 @@ private struct JobDescriptionPastePanel: View {
                             } label: {
                                 Label("Sign In", systemImage: "person.crop.circle.badge.checkmark")
                             }
+                            .accessibilityIdentifier(AccessibilityID.codexSignIn)
                             .disabled(store.isCodexLoading)
                         }
 
                         Toggle("Approve package markdown edits", isOn: $approveCodexEdits)
+                            .accessibilityIdentifier(AccessibilityID.intakeApproveEdits)
                             .toggleStyle(.checkbox)
                     }
                     .font(.callout)
@@ -462,6 +507,7 @@ private struct JobDescriptionPastePanel: View {
                                 } label: {
                                     Label("Open", systemImage: "arrow.up.right.square")
                                 }
+                                .accessibilityIdentifier(AccessibilityID.codexLoginOpen)
                             }
                         }
                     }
@@ -475,6 +521,7 @@ private struct JobDescriptionPastePanel: View {
                     } label: {
                         Label(runCodexAutomation ? "Create + Codex" : "Create Package", systemImage: "shippingbox.and.arrow.backward")
                     }
+                    .accessibilityIdentifier(AccessibilityID.intakeCreate)
                     .buttonStyle(.borderedProminent)
                     .disabled(!canCreate)
 
@@ -533,6 +580,7 @@ private struct MasterResumeWorkspaceView: View {
                                 } label: {
                                     Label("Reload", systemImage: "arrow.clockwise")
                                 }
+                                .accessibilityIdentifier(AccessibilityID.resumeReload)
                                 .disabled(store.isLoadingMasterResume || store.isSavingMasterResume)
 
                                 Button {
@@ -540,6 +588,7 @@ private struct MasterResumeWorkspaceView: View {
                                 } label: {
                                     Label("Save", systemImage: "square.and.arrow.down")
                                 }
+                                .accessibilityIdentifier(AccessibilityID.resumeSave)
                                 .buttonStyle(.borderedProminent)
                                 .disabled(store.masterResumeContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isLoadingMasterResume || store.isSavingMasterResume)
 
@@ -556,6 +605,7 @@ private struct MasterResumeWorkspaceView: View {
                                     .font(.caption)
                             }
                             TextEditor(text: $store.masterResumeContent)
+                                .accessibilityIdentifier(AccessibilityID.resumeEditor)
                                 .accessibilityLabel("Master resume YAML")
                                 .disabled(store.isLoadingMasterResume)
                                 .font(.system(.body, design: .monospaced))
@@ -585,7 +635,9 @@ private struct MasterResumeWorkspaceView: View {
             Button("Discard and Reload", role: .destructive) {
                 Task { await store.loadMasterResume(discardUnsavedChanges: true) }
             }
+            .accessibilityIdentifier(AccessibilityID.resumeDiscard)
             Button("Cancel", role: .cancel) {}
+                .accessibilityIdentifier(AccessibilityID.resumeCancel)
         } message: {
             Text("Your unsaved edits will be replaced by the saved local master resume. Save your edits first if you want to keep them.")
         }
@@ -633,6 +685,7 @@ private struct PackageListRow: View {
             Button("Open") {
                 Task { await store.openPackage(for: application) }
             }
+            .accessibilityIdentifier(AccessibilityID.applicationsOpen)
             .disabled(application.packageName.isEmpty)
         }
     }
@@ -688,6 +741,7 @@ private struct SettingsWorkspaceView: View {
                         } label: {
                             Label("Refresh Local Data", systemImage: "arrow.clockwise")
                         }
+                        .accessibilityIdentifier(AccessibilityID.settingsRefresh)
                         .disabled(store.isLoading)
                     }
                 }
@@ -709,6 +763,7 @@ private struct SettingsWorkspaceView: View {
                         } label: {
                             Label("Re-check Tools", systemImage: "arrow.clockwise")
                         }
+                        .accessibilityIdentifier(AccessibilityID.settingsRecheckTools)
                         .help("Probe the optional tools again without running them")
                     }
                 }

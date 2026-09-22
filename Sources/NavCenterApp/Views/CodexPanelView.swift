@@ -5,11 +5,12 @@ struct CodexChatLauncher: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var store: DashboardStore
     @Binding var isPresented: Bool
+    var windowHeight: CGFloat
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 12) {
             if isPresented {
-                CodexPanelView(isPresented: $isPresented)
+                CodexPanelView(isPresented: $isPresented, panelHeight: LayoutMetrics.codexPanelHeight(forWindowHeight: windowHeight))
                     .environmentObject(store)
                     .transition(.scale(scale: 0.96, anchor: .bottomTrailing).combined(with: .opacity))
             }
@@ -41,6 +42,7 @@ struct CodexChatLauncher: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier(AccessibilityID.codexLauncher)
             .accessibilityLabel(isPresented ? "Close Codex chat" : "Open Codex chat")
             .help(isPresented ? "Close Codex chat" : "Open Codex chat")
         }
@@ -52,6 +54,8 @@ struct CodexPanelView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var store: DashboardStore
     @Binding var isPresented: Bool
+    var panelHeight: CGFloat
+    @FocusState private var inputFocused: Bool
     @State private var prompt = ""
     @State private var allowEdits = false
     @State private var confirmedEdits = false
@@ -107,7 +111,7 @@ struct CodexPanelView: View {
             Divider()
             composer
         }
-        .frame(width: 420, height: 560)
+        .frame(width: 420, height: panelHeight)
         .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 18))
         .overlay(
             RoundedRectangle(cornerRadius: 18)
@@ -115,6 +119,7 @@ struct CodexPanelView: View {
         )
         .shadow(color: .black.opacity(0.24), radius: 26, y: 12)
         .task {
+            inputFocused = true
             await store.refreshCodexStatus()
         }
         .onChange(of: store.selectedPackage?.package.name) { _ in
@@ -152,6 +157,7 @@ struct CodexPanelView: View {
             }
             .buttonStyle(.borderless)
             .disabled(store.isCodexLoading)
+            .accessibilityIdentifier(AccessibilityID.codexRefresh)
             .accessibilityLabel("Refresh Codex account")
             .help("Refresh Codex account")
 
@@ -165,6 +171,7 @@ struct CodexPanelView: View {
             }
             .buttonStyle(.borderless)
             .keyboardShortcut(.cancelAction)
+            .accessibilityIdentifier(AccessibilityID.codexClose)
             .accessibilityLabel("Close Codex chat")
             .help("Close Codex chat")
         }
@@ -187,11 +194,13 @@ struct CodexPanelView: View {
                         Task { await store.startCodexLogin(type: "chatgpt") }
                     }
                     .disabled(store.isCodexLoading)
+                    .accessibilityIdentifier(AccessibilityID.codexSignIn)
 
                     Button("Code") {
                         Task { await store.startCodexLogin(type: "chatgptDeviceCode") }
                     }
                     .disabled(store.isCodexLoading)
+                    .accessibilityIdentifier(AccessibilityID.codexCode)
                 }
             }
 
@@ -259,6 +268,8 @@ struct CodexPanelView: View {
             }
 
             TextEditor(text: $prompt)
+                .focused($inputFocused)
+                .accessibilityIdentifier(AccessibilityID.codexInput)
                 .accessibilityLabel("Message to Codex")
                 .font(.body)
                 .frame(height: 76)
@@ -271,12 +282,14 @@ struct CodexPanelView: View {
 
             HStack(spacing: 12) {
                 Toggle("Allow edits", isOn: $allowEdits)
+                    .accessibilityIdentifier(AccessibilityID.codexAllowEdits)
                     .toggleStyle(.checkbox)
                     .disabled(store.selectedPackage == nil)
                     .help("Allow Codex to edit package markdown files only")
 
                 if allowEdits {
                     Toggle("Confirm", isOn: $confirmedEdits)
+                        .accessibilityIdentifier(AccessibilityID.codexConfirmEdits)
                         .toggleStyle(.checkbox)
                         .foregroundStyle(.orange)
                         .help("Confirm package-local markdown edits for this turn")
@@ -298,6 +311,7 @@ struct CodexPanelView: View {
                     Label(store.isCodexLoading ? "Sending" : "Send", systemImage: "paperplane.fill")
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier(AccessibilityID.codexSend)
                 .disabled(!canSend)
             }
 
@@ -312,6 +326,7 @@ struct CodexPanelView: View {
                             Task { await store.cancelCodexTurn() }
                         }
                         .disabled(store.isCancellingCodex)
+                        .accessibilityIdentifier(AccessibilityID.codexStop)
                         .accessibilityLabel("Stop the current Codex turn")
                     }
                 }
@@ -388,6 +403,7 @@ private struct CodexLoginInstructions: View {
                     Button("Open") {
                         NSWorkspace.shared.open(url)
                     }
+                    .accessibilityIdentifier(AccessibilityID.codexLoginOpen)
                 }
             }
 

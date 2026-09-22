@@ -63,6 +63,7 @@ struct StatCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -127,6 +128,8 @@ struct HealthRow: View {
             Spacer()
         }
         .font(.callout)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): \(isPassing ? "present" : "missing")")
     }
 }
 
@@ -137,6 +140,7 @@ struct StatusDot: View {
         Circle()
             .fill(color)
             .frame(width: 8, height: 8)
+            .accessibilityLabel("\(status.capitalized) status")
     }
 
     private var color: Color {
