@@ -123,9 +123,11 @@ public final class FeedbackDiagnostics {
 
 public enum PathRedactor {
     public static func redact(_ value: String, homeDirectory: URL) -> String {
+        // Home is removed only at a component boundary. Non-matches stay intact so the
+        // /Users/<name> and username rules still see the original text.
         var redacted = value
         for prefix in homePrefixes(homeDirectory) {
-            redacted = redacted.replacingOccurrences(of: prefix, with: "<home>")
+            redacted = replacingHomePrefix(prefix, in: redacted)
         }
         if let username = homeDirectory.lastPathComponent.split(separator: "/").last, !username.isEmpty {
             redacted = redacted.replacingOccurrences(of: String(username), with: "<user>")
@@ -135,6 +137,25 @@ public enum PathRedactor {
             with: "<home>",
             options: .regularExpression
         )
+    }
+
+    private static func replacingHomePrefix(_ prefix: String, in value: String) -> String {
+        guard !prefix.isEmpty else { return value }
+        var result = String()
+        result.reserveCapacity(value.count)
+        var cursor = value.startIndex
+        while cursor < value.endIndex, let range = value.range(of: prefix, range: cursor..<value.endIndex) {
+            result.append(contentsOf: value[cursor..<range.lowerBound])
+            let next = range.upperBound
+            if next == value.endIndex || value[next] == "/" {
+                result.append("<home>")
+            } else {
+                result.append(contentsOf: value[range])
+            }
+            cursor = next
+        }
+        result.append(contentsOf: value[cursor..<value.endIndex])
+        return result
     }
 
     private static func homePrefixes(_ homeDirectory: URL) -> [String] {

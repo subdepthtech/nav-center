@@ -196,6 +196,14 @@ class CLITests(unittest.TestCase):
         doctor_text = self.decoded_text(doctor.stdout)
         for secret in secrets:
             self.assertNotIn(secret, doctor_text)
+        text = subprocess.run(
+            [os.environ["NAVCENTERCTL"], "doctor", "--workspace", self.workspace],
+            env=env, capture_output=True, text=True, timeout=15,
+        )
+        self.assertEqual(text.returncode, 0, text.stderr)
+        atsim_rows = [line for line in text.stdout.splitlines() if line.startswith("atsim\t")]
+        self.assertEqual(len(atsim_rows), 1)
+        self.assertIn("path hidden", atsim_rows[0])
 
         feedback = subprocess.run(
             [os.environ["NAVCENTERCTL"], "feedback-diagnostics", "--workspace", self.workspace],
@@ -214,6 +222,64 @@ class CLITests(unittest.TestCase):
         feedback_text = self.decoded_text(feedback.stdout)
         for secret in secrets:
             self.assertNotIn(secret, feedback_text)
+
+    def test_bare_name_override_is_hidden_in_redacted_doctor_and_feedback(self):
+        self.assertEqual(self.run_cli("init-workspace", "--workspace", self.workspace).returncode, 0)
+        secret = "acme-secret-exporter"
+        bin_dir = self.root / "path-bin"
+        bin_dir.mkdir()
+        binary = bin_dir / secret
+        binary.write_text("#!/bin/sh\nexit 0\n")
+        binary.chmod(0o755)
+        env = dict(self.env, NAV_CENTER_EXPORT_BIN=secret, PATH=str(bin_dir))
+
+        doctor = subprocess.run(
+            [os.environ["NAVCENTERCTL"], "doctor", "--json", "--workspace", self.workspace],
+            env=env, capture_output=True, text=True, timeout=15,
+        )
+        self.assertEqual(doctor.returncode, 0, doctor.stderr)
+        doctor_tools = {tool["tool"]: tool for tool in json.loads(doctor.stdout)["tools"]}
+        export_tool = doctor_tools["export-tool"]
+        self.assertEqual(export_tool["state"], "found")
+        self.assertEqual(export_tool["source"], "path")
+        self.assertIs(export_tool["fromOverride"], True)
+        self.assertIsNone(export_tool.get("resolvedPath"))
+        self.assertEqual(
+            export_tool["summary"],
+            "Found via NAV_CENTER_EXPORT_BIN (path hidden in redacted output)",
+        )
+        doctor_text = self.decoded_text(doctor.stdout)
+        self.assertNotIn(secret, doctor_text)
+        self.assertNotIn(str(binary), doctor_text)
+
+        feedback = subprocess.run(
+            [os.environ["NAVCENTERCTL"], "feedback-diagnostics", "--workspace", self.workspace],
+            env=env, capture_output=True, text=True, timeout=15,
+        )
+        self.assertEqual(feedback.returncode, 0, feedback.stderr)
+        feedback_tools = {tool["tool"]: tool for tool in json.loads(feedback.stdout)["tools"]}
+        feedback_export = feedback_tools["export-tool"]
+        self.assertEqual(feedback_export["state"], "found")
+        self.assertEqual(feedback_export["source"], "path")
+        self.assertIs(feedback_export["fromOverride"], True)
+        self.assertIsNone(feedback_export.get("resolvedPath"))
+        self.assertEqual(
+            feedback_export["summary"],
+            "Found via NAV_CENTER_EXPORT_BIN (path hidden in redacted output)",
+        )
+        feedback_text = self.decoded_text(feedback.stdout)
+        self.assertNotIn(secret, feedback_text)
+        self.assertNotIn(str(binary), feedback_text)
+
+        text = subprocess.run(
+            [os.environ["NAVCENTERCTL"], "doctor", "--workspace", self.workspace],
+            env=env, capture_output=True, text=True, timeout=15,
+        )
+        self.assertEqual(text.returncode, 0, text.stderr)
+        rows = [line for line in text.stdout.splitlines() if line.startswith("export-tool\t")]
+        self.assertEqual(len(rows), 1)
+        self.assertIn("path hidden", rows[0])
+        self.assertNotIn(secret, text.stdout)
 
     def decoded_text(self, stdout):
         values = []

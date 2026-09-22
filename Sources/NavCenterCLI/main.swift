@@ -240,7 +240,7 @@ private func doctorState(_ status: ToolStatus) -> String {
 private func doctorDetail(_ status: ToolStatus) -> String {
     switch status.state {
     case .found:
-        return status.resolvedPath ?? ""
+        return status.resolvedPath ?? status.summary
     case .overrideInvalid:
         return status.summary
     case .missing, .builtIn:

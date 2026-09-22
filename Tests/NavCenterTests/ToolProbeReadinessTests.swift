@@ -12,6 +12,7 @@ final class ToolProbeReadinessTests: XCTestCase {
         let status = ToolProbe.resolve(.atsim, configuration: isolated(environment: ["NAV_CENTER_ATSIM_BIN": binary.path, "PATH": ""], root: root))
         XCTAssertEqual(status.state, .found)
         XCTAssertEqual(status.source, .environment)
+        XCTAssertTrue(status.fromOverride)
         XCTAssertEqual(status.resolvedPath, binary.path)
         XCTAssertEqual(status.summary, "found at \(binary.path) (environment override)")
         XCTAssertEqual(ToolProbe.executablePath(for: .atsim, configuration: isolated(environment: ["NAV_CENTER_ATSIM_BIN": binary.path, "PATH": ""], root: root)), binary.path)
@@ -57,6 +58,7 @@ final class ToolProbeReadinessTests: XCTestCase {
         let status = ToolProbe.resolve(.atsim, configuration: isolated(environment: ["NAV_CENTER_ATSIM_BIN": "", "PATH": directory.path], root: root))
         XCTAssertEqual(status.state, .found)
         XCTAssertEqual(status.source, .path)
+        XCTAssertFalse(status.fromOverride)
         XCTAssertEqual(status.resolvedPath, binary.path)
     }
 
@@ -367,6 +369,87 @@ final class ToolProbeReadinessTests: XCTestCase {
             XCTAssertFalse(redacted.tools.contains { status in
                 (status.resolvedPath ?? "").contains(secret) || status.summary.contains(secret) || status.installHint.contains(secret)
             }, secret)
+        }
+    }
+
+    func testBareNameOverrideFoundInFallbackIsHiddenWhenRedacted() throws {
+        let secret = "acme-secret-exporter"
+        let directory = "/opt/injected-fallback"
+        let resolved = directory + "/" + secret
+        let report = ToolProbe.report(configuration: ToolProbeConfiguration(
+            environment: ["PATH": "", "NAV_CENTER_EXPORT_BIN": secret],
+            homeDirectory: home,
+            fallbackDirectories: [directory],
+            isExecutableRegularFile: { $0 == resolved }
+        ))
+        let raw = try XCTUnwrap(report.tools.first { $0.tool == .exportTool })
+        XCTAssertEqual(raw.state, .found)
+        XCTAssertEqual(raw.source, .fallback)
+        XCTAssertTrue(raw.fromOverride)
+        XCTAssertEqual(raw.resolvedPath, resolved)
+        XCTAssertEqual(raw.summary, "found at \(resolved) (fallback directory)")
+
+        let redacted = report.redacted(homeDirectory: home)
+        let status = try XCTUnwrap(redacted.tools.first { $0.tool == .exportTool })
+        XCTAssertEqual(status.state, .found)
+        XCTAssertEqual(status.source, .fallback)
+        XCTAssertTrue(status.fromOverride)
+        XCTAssertNil(status.resolvedPath)
+        XCTAssertEqual(status.summary, "Found via NAV_CENTER_EXPORT_BIN (path hidden in redacted output)")
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let rawJSON = String(decoding: try encoder.encode(report), as: UTF8.self)
+        let redactedJSON = String(decoding: try encoder.encode(redacted), as: UTF8.self)
+        XCTAssertTrue(rawJSON.contains(secret))
+        XCTAssertFalse(redactedJSON.contains(secret))
+        XCTAssertFalse(redactedJSON.contains(resolved))
+    }
+
+    func testToolStatusDecodesMissingFromOverrideAsFalse() throws {
+        let legacy = """
+        {"environmentVariable":"PANDOC_BIN","installHint":"brew install pandoc","resolvedPath":"/usr/local/bin/pandoc","source":"path","state":"found","summary":"found","tool":"pandoc"}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(ToolStatus.self, from: legacy)
+        XCTAssertFalse(decoded.fromOverride)
+        XCTAssertEqual(decoded.resolvedPath, "/usr/local/bin/pandoc")
+        XCTAssertEqual(decoded.source, .path)
+
+        let encoded = try JSONEncoder().encode(ToolStatus(
+            tool: .pandoc,
+            state: .found,
+            resolvedPath: "/usr/local/bin/pandoc",
+            source: .path,
+            environmentVariable: "PANDOC_BIN",
+            installHint: "brew install pandoc",
+            summary: "found"
+        ))
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(object["fromOverride"] as? Bool, false)
+    }
+
+    func testHomeRedactionStopsAtPathComponentBoundary() {
+        let janeHome = URL(fileURLWithPath: "/Users/jane", isDirectory: true)
+        XCTAssertEqual(PathRedactor.redact("/Users/jane/x", homeDirectory: janeHome), "<home>/x")
+        XCTAssertEqual(PathRedactor.redact("/Users/jane/.local/bin/ruby", homeDirectory: janeHome), "<home>/.local/bin/ruby")
+        let nestedHome = URL(fileURLWithPath: "/var/folders/ab/Users/jane", isDirectory: true)
+        XCTAssertEqual(PathRedactor.redact("/var/folders/ab/Users/jane/x", homeDirectory: nestedHome), "<home>/x")
+        XCTAssertEqual(
+            PathRedactor.redact("owner jane at /opt/jane/tool", homeDirectory: janeHome),
+            "owner <user> at /opt/<user>/tool"
+        )
+        let cases = [
+            ("/Users/jane2/x", "/Users/other/x", "<home>/x"),
+            ("/Users/jane-backup/x", "/Users/other/x", "<home>/x"),
+            ("/Users/jane2/.local/bin/ruby", "/Users/other/.local/bin/ruby", "<home>/.local/bin/ruby"),
+        ]
+        for (path, other, expected) in cases {
+            let redacted = PathRedactor.redact(path, homeDirectory: janeHome)
+            XCTAssertEqual(redacted, expected, path)
+            XCTAssertEqual(redacted, PathRedactor.redact(other, homeDirectory: janeHome), path)
+            XCTAssertFalse(redacted.contains("<home>2"), path)
+            XCTAssertFalse(redacted.contains("<home>-backup"), path)
+            XCTAssertFalse(redacted.contains("jane"), path)
         }
     }
 

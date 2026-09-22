@@ -101,6 +101,7 @@ public struct ToolStatus: Codable, Equatable, Identifiable, Sendable {
     public let environmentVariable: String?
     public let installHint: String
     public let summary: String
+    public let fromOverride: Bool
 
     public init(
         tool: ExternalTool,
@@ -109,7 +110,8 @@ public struct ToolStatus: Codable, Equatable, Identifiable, Sendable {
         source: ToolSource?,
         environmentVariable: String?,
         installHint: String,
-        summary: String
+        summary: String,
+        fromOverride: Bool = false
     ) {
         self.tool = tool
         self.state = state
@@ -118,6 +120,42 @@ public struct ToolStatus: Codable, Equatable, Identifiable, Sendable {
         self.environmentVariable = environmentVariable
         self.installHint = installHint
         self.summary = summary
+        self.fromOverride = fromOverride
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case tool
+        case state
+        case resolvedPath
+        case source
+        case environmentVariable
+        case installHint
+        case summary
+        case fromOverride
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tool = try container.decode(ExternalTool.self, forKey: .tool)
+        state = try container.decode(ToolState.self, forKey: .state)
+        resolvedPath = try container.decodeIfPresent(String.self, forKey: .resolvedPath)
+        source = try container.decodeIfPresent(ToolSource.self, forKey: .source)
+        environmentVariable = try container.decodeIfPresent(String.self, forKey: .environmentVariable)
+        installHint = try container.decode(String.self, forKey: .installHint)
+        summary = try container.decode(String.self, forKey: .summary)
+        fromOverride = try container.decodeIfPresent(Bool.self, forKey: .fromOverride) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(tool, forKey: .tool)
+        try container.encode(state, forKey: .state)
+        try container.encodeIfPresent(resolvedPath, forKey: .resolvedPath)
+        try container.encodeIfPresent(source, forKey: .source)
+        try container.encodeIfPresent(environmentVariable, forKey: .environmentVariable)
+        try container.encode(installHint, forKey: .installHint)
+        try container.encode(summary, forKey: .summary)
+        try container.encode(fromOverride, forKey: .fromOverride)
     }
 }
 
@@ -139,7 +177,7 @@ public struct ToolAvailabilityReport: Codable, Equatable, Sendable {
     }
 
     private func redactedStatus(_ status: ToolStatus, homeDirectory: URL) -> ToolStatus {
-        if status.source == .environment || status.state == .overrideInvalid {
+        if status.state == .overrideInvalid || status.source == .environment || (status.fromOverride && status.state == .found) {
             let variable = status.environmentVariable ?? status.tool.environmentVariable ?? "the override"
             let summary: String
             if status.state == .overrideInvalid {
@@ -155,7 +193,8 @@ public struct ToolAvailabilityReport: Codable, Equatable, Sendable {
                 source: status.source,
                 environmentVariable: status.environmentVariable,
                 installHint: status.installHint,
-                summary: summary
+                summary: summary,
+                fromOverride: status.fromOverride
             )
         }
         return ToolStatus(
@@ -165,7 +204,8 @@ public struct ToolAvailabilityReport: Codable, Equatable, Sendable {
             source: status.source,
             environmentVariable: status.environmentVariable,
             installHint: status.installHint,
-            summary: PathRedactor.redact(status.summary, homeDirectory: homeDirectory)
+            summary: PathRedactor.redact(status.summary, homeDirectory: homeDirectory),
+            fromOverride: status.fromOverride
         )
     }
 
@@ -212,45 +252,46 @@ public enum ToolProbe {
 
     public static func resolve(_ tool: ExternalTool, configuration: ToolProbeConfiguration) -> ToolStatus {
         let override = overrideValue(tool, environment: configuration.environment)
+        let fromOverride = override != nil
         if tool == .exportTool, override == nil {
-            return status(tool, state: .builtIn, resolvedPath: nil, source: nil, summary: "built-in")
+            return status(tool, state: .builtIn, resolvedPath: nil, source: nil, summary: "built-in", fromOverride: fromOverride)
         }
         if let override, override.contains("/") {
             let variable = tool.environmentVariable ?? "override"
             if !override.hasPrefix("/") {
-                return status(tool, state: .overrideInvalid, resolvedPath: override, source: nil, summary: "\(variable) must be an absolute path")
+                return status(tool, state: .overrideInvalid, resolvedPath: override, source: nil, summary: "\(variable) must be an absolute path", fromOverride: fromOverride)
             }
             if configuration.isExecutableRegularFile(override) {
-                return status(tool, state: .found, resolvedPath: override, source: .environment, summary: foundSummary(override, .environment))
+                return status(tool, state: .found, resolvedPath: override, source: .environment, summary: foundSummary(override, .environment), fromOverride: fromOverride)
             }
-            return status(tool, state: .overrideInvalid, resolvedPath: override, source: nil, summary: "\(variable) is not an executable file")
+            return status(tool, state: .overrideInvalid, resolvedPath: override, source: nil, summary: "\(variable) is not an executable file", fromOverride: fromOverride)
         }
 
         guard let command = override ?? tool.defaultCommand else {
-            return status(tool, state: .missing, resolvedPath: nil, source: nil, summary: "missing")
+            return status(tool, state: .missing, resolvedPath: nil, source: nil, summary: "missing", fromOverride: fromOverride)
         }
         if command.hasPrefix("/") {
             if configuration.isExecutableRegularFile(command) {
-                return status(tool, state: .found, resolvedPath: command, source: .defaultPath, summary: foundSummary(command, .defaultPath))
+                return status(tool, state: .found, resolvedPath: command, source: .defaultPath, summary: foundSummary(command, .defaultPath), fromOverride: fromOverride)
             }
-            return status(tool, state: .missing, resolvedPath: nil, source: nil, summary: "missing")
+            return status(tool, state: .missing, resolvedPath: nil, source: nil, summary: "missing", fromOverride: fromOverride)
         }
 
         for directory in pathDirectories(configuration.environment["PATH"] ?? "") where directory.hasPrefix("/") {
             let candidate = joined(directory, command)
             guard candidate.hasPrefix("/") else { continue }
             if configuration.isExecutableRegularFile(candidate) {
-                return status(tool, state: .found, resolvedPath: candidate, source: .path, summary: foundSummary(candidate, .path))
+                return status(tool, state: .found, resolvedPath: candidate, source: .path, summary: foundSummary(candidate, .path), fromOverride: fromOverride)
             }
         }
         for directory in configuration.fallbackDirectories where directory.hasPrefix("/") {
             let candidate = joined(directory, command)
             guard candidate.hasPrefix("/") else { continue }
             if configuration.isExecutableRegularFile(candidate) {
-                return status(tool, state: .found, resolvedPath: candidate, source: .fallback, summary: foundSummary(candidate, .fallback))
+                return status(tool, state: .found, resolvedPath: candidate, source: .fallback, summary: foundSummary(candidate, .fallback), fromOverride: fromOverride)
             }
         }
-        return status(tool, state: .missing, resolvedPath: nil, source: nil, summary: "missing")
+        return status(tool, state: .missing, resolvedPath: nil, source: nil, summary: "missing", fromOverride: fromOverride)
     }
 
     public static func report(configuration: ToolProbeConfiguration = .init()) -> ToolAvailabilityReport {
@@ -318,7 +359,8 @@ public enum ToolProbe {
         state: ToolState,
         resolvedPath: String?,
         source: ToolSource?,
-        summary: String
+        summary: String,
+        fromOverride: Bool = false
     ) -> ToolStatus {
         ToolStatus(
             tool: tool,
@@ -327,7 +369,8 @@ public enum ToolProbe {
             source: source,
             environmentVariable: tool.environmentVariable,
             installHint: tool.installHint,
-            summary: summary
+            summary: summary,
+            fromOverride: fromOverride
         )
     }
 }
