@@ -99,6 +99,27 @@ NAVCENTERCTL="$(xcrun swift build --show-bin-path --scratch-path "$nav_build_roo
 The Swift test resolves Pandoc, pdftotext, and Chrome with the default probe, exports one synthetic resume, and requires `Resume_*.html`, `.docx`, `.pdf`, `.docx.txt`, and `.pdf.txt`, with a PDF header and non-empty text extractions. The `test_cli.py` real lane runs `export-artifacts` with no tool overrides and the same five-file check, with a 120 second timeout. See [`ExportToolReadinessTests`](../Tests/NavCenterTests/ExportToolReadinessTests.swift).
 Both real-export lanes remove `NAV_CENTER_VAULT_DIR` and set `NAV_CENTER_SKIP_VAULT_SYNC=1`, so a configured vault is never written.
 
+## Integration acceptance lane
+
+Run `scripts/integration-acceptance.sh /absolute/path/to/output` from the repository root with a licensed Xcode toolchain, Python 3, installed atsim, Pandoc, Poppler `pdftotext`, and Google Chrome. Set `NAV_CENTER_ATSIM_BIN` to an absolute executable path when atsim is not on PATH. The script builds `navcenterctl`, reads its redacted `doctor --json` report, records observed tool versions, and writes lane logs plus `integration-acceptance.json` and `.md` to the chosen directory. Use a temporary output directory and synthetic test data.
+
+The requested atsim, Pandoc, pdftotext, and Chrome tools are mandatory for this lane. A missing or invalid tool fails before tests run. Any explicit XCTest or unittest skip, missing execution summary, test failure, or nonzero exit fails the lane; the summary records the outcome. Ruby and Codex versions are recorded when present, but this script does not run live Codex acceptance. CI runs this lane only on manual `workflow_dispatch`, not on push or pull request.
+
+### Codex live acceptance (manual)
+
+Use a disposable synthetic package and a signed-in maintainer session. Record the observed result in the beta setup evidence; this checklist is separate from the automated lane.
+
+| Check | Pass/Fail |
+| --- | --- |
+| Record `codex --version` in the evidence. | |
+| A signed-in `codex app-server` starts from the Codex panel. | |
+| One chat without edits completes. | |
+| One chat proposing edits requires confirmation, then applies only to package Markdown. | |
+| The staging directory has mode 0700. | |
+| The server is stopped before changes are applied. | |
+| Compare `ls -la ~/.codex` before and after; Nav Center does not modify it. | |
+| No private data is used. | |
+
 For a separately reviewed, installed ATS executable, substitute its absolute path:
 
 ```bash
