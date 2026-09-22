@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -130,6 +131,111 @@ class AnalysisReportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.prepare()
         self.assertEqual((self.reports / "swift-coverage.txt").read_bytes(), original)
+
+
+class CoverageExportTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="nav-coverage-synthetic-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / "project with spaces"
+        (self.root / "scripts").mkdir(parents=True)
+        (self.root / "Sources").mkdir()
+        self.source = self.root / "Sources/Example.swift"
+        self.source.write_text("func example() {}\n")
+        script = Path(__file__).resolve().parents[1] / "export-coverage.sh"
+        self.script = self.root / "scripts/export-coverage.sh"
+        self.script.write_text(script.read_text())
+        self.scratch = self.root / "scratch"
+        self.products = self.scratch / "out/Products/Debug"
+        (self.products / "codecov").mkdir(parents=True)
+        self.profile = self.products / "codecov/default.profdata"
+        self.profile.write_bytes(b"synthetic profile")
+        self.reports = self.root / "reports"
+        self.log = self.root / "tool-calls.jsonl"
+        tools = self.root / "tools"
+        tools.mkdir()
+        scripts = {
+            "swift": "import os\nprint(os.environ['TEST_PRODUCTS'])\n",
+            "xcrun": """import json, os, sys
+from pathlib import Path
+with Path(os.environ['TEST_TOOL_LOG']).open('a') as log:
+    log.write(json.dumps(sys.argv[1:]) + '\\n')
+print('synthetic llvm-cov ' + sys.argv[2])
+sys.exit(int(os.environ.get('TEST_LLVM_EXIT', '0')))
+""",
+        }
+        for name, body in scripts.items():
+            executable = tools / name
+            executable.write_text("#!" + sys.executable + "\n" + body)
+            executable.chmod(0o755)
+        self.env = {
+            "PATH": str(tools) + os.pathsep + os.defpath,
+            "TEST_PRODUCTS": str(self.products),
+            "TEST_TOOL_LOG": str(self.log),
+        }
+
+    def binary(self, name):
+        binary = self.products / f"{name}.xctest/Contents/MacOS/{name}"
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(b"synthetic test executable")
+        return binary
+
+    def export(self):
+        return subprocess.run(["/bin/bash", str(self.script), str(self.scratch), str(self.reports)],
+                              cwd=self.root, env=self.env, capture_output=True, text=True, timeout=20)
+
+    def assert_exports(self, name):
+        binary = self.binary(name)
+        result = self.export()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertEqual([call[:3] for call in calls],
+                         [["llvm-cov", mode, str(binary)] for mode in ("show", "export", "report")])
+        for call in calls:
+            self.assertIn("-instr-profile=" + str(self.profile), call)
+            self.assertIn(str(self.source), call)
+        for filename, mode in (("swift-coverage.txt", "show"), ("coverage.json", "export"),
+                               ("coverage-summary.txt", "report")):
+            self.assertEqual((self.reports / filename).read_text(), "synthetic llvm-cov " + mode + "\n")
+
+    def test_exports_package_test_bundle(self):
+        self.assert_exports("NavCenterPackageTests")
+
+    def test_exports_xcode27_test_target_bundle(self):
+        self.assert_exports("NavCenterTests")
+
+    def test_rejects_unknown_test_bundle(self):
+        self.binary("UnrelatedTests")
+        result = self.export()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.log.exists())
+        self.assertFalse(self.reports.exists())
+
+    def test_rejects_ambiguous_test_bundles(self):
+        self.binary("NavCenterPackageTests")
+        self.binary("NavCenterTests")
+        result = self.export()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Multiple Nav Center test binaries", result.stderr)
+        self.assertFalse(self.log.exists())
+        self.assertFalse(self.reports.exists())
+
+    def test_rejects_empty_coverage_profile(self):
+        self.binary("NavCenterTests")
+        self.profile.write_bytes(b"")
+        result = self.export()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.log.exists())
+        self.assertFalse(self.reports.exists())
+
+    def test_llvm_failure_stops_export(self):
+        self.binary("NavCenterTests")
+        self.env["TEST_LLVM_EXIT"] = "42"
+        result = self.export()
+        self.assertEqual(result.returncode, 42)
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertEqual(len(calls), 1)
+        self.assertFalse((self.reports / "coverage.json").exists())
 
 
 class WorkflowFailureTests(unittest.TestCase):

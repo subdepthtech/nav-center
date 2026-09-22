@@ -4,7 +4,16 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 SCRATCH="${1:-.build}"
 REPORTS="${2:-reports/native}"
 BIN="$(swift build --scratch-path "$SCRATCH" --show-bin-path)"
-TEST_BINARY="$BIN/NavCenterPackageTests.xctest/Contents/MacOS/NavCenterPackageTests"
+# SwiftPM uses the package bundle on Xcode 26 and the test-target bundle on Xcode 27.
+# Limit discovery to those known products; reject a stale, ambiguous scratch path.
+TEST_BINARY=""
+for TEST_NAME in NavCenterPackageTests NavCenterTests; do
+  CANDIDATE="$BIN/$TEST_NAME.xctest/Contents/MacOS/$TEST_NAME"
+  if [[ -s "$CANDIDATE" ]]; then
+    [[ -z "$TEST_BINARY" ]] || { echo "Multiple Nav Center test binaries; rerun coverage in a clean scratch path." >&2; exit 1; }
+    TEST_BINARY="$CANDIDATE"
+  fi
+done
 PROFILE="$BIN/codecov/default.profdata"
 [[ -s "$TEST_BINARY" && -s "$PROFILE" ]] || { echo "Run swift test --enable-code-coverage with the same scratch path first." >&2; exit 1; }
 mkdir -p "$REPORTS"
