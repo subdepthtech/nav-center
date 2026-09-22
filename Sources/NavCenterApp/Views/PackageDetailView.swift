@@ -940,7 +940,7 @@ private struct PDFDocumentPreview: NSViewRepresentable {
         if context.coordinator.loadedURL != url || context.coordinator.loadedRevision != revision {
             do {
                 let sourceParent = try PathSafety.realpath(url.deletingLastPathComponent(), label: "PDF preview")
-                let data = try PathSafety.readData(url, inside: sourceParent, label: "PDF preview", maxBytes: 64 * 1024 * 1024)
+                let data = try PathSafety.readData(sourceParent.appendingPathComponent(url.lastPathComponent), inside: sourceParent, label: "PDF preview", maxBytes: 64 * 1024 * 1024)
                 pdfView.document = PDFDocument(data: data)
             } catch {
                 pdfView.document = nil
