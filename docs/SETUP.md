@@ -1,98 +1,63 @@
 # Repository and native tooling setup
 
-Status recorded 2026-09-16 UTC. This is the living setup plan; update evidence and remaining gates as work proceeds. Configuration, executed validation, and release acceptance are separate states. [Operating runbook](TOOLING.md) · [Testing](TESTING.md) · [Architecture](ARCHITECTURE.md).
+Status recorded 2026-09-22 UTC. This is the living setup record. Configuration, executed validation, and release acceptance are separate states. [Operating runbook](TOOLING.md) · [Testing](TESTING.md) · [Architecture](ARCHITECTURE.md).
 
 ## Current outcome
 
-Repository controls were changed and read back on GitHub. Documentation, pinned tool provisioning, upgraded CI, Sonar report preparation, ownership and templates are prepared locally. No source implementation, inherited tests, or vendor snapshot files were changed. Nothing has been committed, pushed, merged, released, submitted to Apple, or uploaded to Sonar by this setup task.
+The previously unpublished hardening and tooling baseline is on main through [PR #2](https://github.com/subdepthtech/nav-center/pull/2) and [PR #3](https://github.com/subdepthtech/nav-center/pull/3). The September 16 publication and local Xcode-license blockers are no longer current. The development closeout has explicit human authorization to review, fix, commit, push and merge its PRs; this does not authorize a binary release, distribution or Apple submission.
 
-The worktree inherited substantial unpublished hardening. Its new CI relies on inherited test/release files absent from committed main. A working tooling PR cannot simply publish the whole tree without also publishing that implementation. The owner must decide whether to review/commit that baseline first or explicitly authorize a combined ready-for-review PR. Until then, setup remains a reviewable local delta.
+Main protection and full-SHA Actions enforcement are active and have been read back. Claude's repository allowlist startup failure was corrected, including its nested Bun action; a subsequent human-gated review run completed successfully. Sonar onboarding remains optional and deferred to the account owner.
 
-## Phase 0 — baseline and toolchain
+[PR #4](https://github.com/subdepthtech/nav-center/pull/4) merged the exact-directory tracker correction. [PR #5](https://github.com/subdepthtech/nav-center/pull/5) updates the pinned Claude and Sonar actions. [PR #6](https://github.com/subdepthtech/nav-center/pull/6) supplies recoverable first-use tracker initialization and this closeout record. Evidence below identifies the tested source candidates; final integration is checked again on the merged main revision, with CI results retained on that revision. No application feature, integration or release gate is accepted merely because its setup is present.
 
-- [x] Confirm detached worktree at `0555cb0483f98de44e6c32a1a1cdd270d50a1abf`, matching original main HEAD.
-- [x] Inventory 91 files: 38 tracked modifications and 25 untracked files. Original/worktree file bytes matched. Preserve original checkout; retain separate baseline and setup delta evidence.
-- [x] Read repository instructions, package/source/test/release contracts, vendor manifest, tool versions and live GitHub settings.
-- [x] Diagnose local tools: Command Line Tools Swift 6.4 is selected; Xcode 27.0 / 27A266a exists but its license is unaccepted. Do not accept it on the owner's behalf.
-- [x] Select compatible CI: `macos-15`, explicit Xcode 26.3 / Swift 6.2.3; retain macOS 13 as deployment minimum, not verified support evidence.
-- [x] Build the CLI with installed Command Line Tools using temporary build/cache directories; all four synthetic CLI tests passed.
-- [ ] Owner completes Xcode license/first-launch setup. Full native app/XCTest, debug/release, sanitizers and actual coverage remain unverified in this task. The selected CI Xcode version is not installed locally.
+## Repository controls
 
-## Phase 1 — repository management
+The [September 22 settings readback](setup-evidence/github-settings-2026-09-22.json) contains configuration metadata only. The [September 16 snapshot](setup-evidence/github-settings-2026-09-16.json) and [preservation baseline](setup-evidence/preservation-baseline.json) remain historical evidence.
 
-- [x] Version shared `AGENTS.md`; ignore only personal `AGENTS.local.md` guidance.
-- [x] Add architecture/testing/tooling docs and this checklist; mark the old product plan historical.
-- [x] Add issue forms, PR template and CODEOWNERS using verified repository administrator `@austinkennethtucker`.
-- [x] Replace vague security reporting instructions with the already-enabled GitHub private advisory route.
-- [x] Inventory dependency/license boundaries; preserve the ATS snapshot's unresolved standalone MIT attribution notice.
-- [ ] Publish the intended documentation/configuration revision after the inherited-baseline decision; local files are not yet effective repository policy on main.
+| Control | Verified state |
+| --- | --- |
+| Main ruleset `23822967` | Active; PR required, review threads resolved, branch current with main, deletion and force-push prohibited; no bypass actors |
+| Required checks | **Repository checks** and **Build, test and release contracts**, both bound to GitHub Actions app ID `15368` |
+| Reviews | Stale approvals dismissed; zero required independent approvals avoids locking out the solo maintainer; human merge authorization remains required by project policy |
+| Actions policy | GitHub-owned actions plus Sonar scan, Claude Code, and the exact nested Bun action; full commit SHAs required; other verified publishers are not implicitly allowed |
+| Workflow token | Read-only defaults; workflow PR creation/approval disabled; all external-contributor fork runs require approval |
+| Claude environment | Human reviewer `austinkennethtucker`; self-review allowed, administrator bypass disabled, PR branches allowed |
+| Release environment | Same human reviewer; main only, self-review allowed; existing administrator bypass remains enabled and is not release authorization |
+| Security | Secret scanning, push protection and Dependabot security updates enabled; existing CodeQL extended default setup covers Actions, Python and Swift |
+| Sonar | Main-only environment exists; no repository variables or Sonar environment token configured; workflow remains off and nonrequired |
 
-## Phase 2 — CI and dependencies
-
-- [x] Adapt existing CI/release workflows; retain release regressions, CLI behavior, coverage, ASAN and TSAN checks.
-- [x] Put current-source/history Gitleaks and workflow checks before expensive native compilation. Use exact versions, full action SHAs and verified binary archive checksums.
-- [x] Add official swift-format and focused nonduplicative SwiftLint as visible advisory baselines. Tests/builds/sanitizers remain blocking.
-- [x] Validate genuine native report structure/paths/counts and retain reports/skips in explicit artifacts. No synthetic coverage is used as product evidence.
-- [x] Add weekly Actions Dependabot; explicitly exclude bot rewrites of the frozen npm vendor snapshot. SwiftPM has no third-party dependencies yet.
-- [x] Enable repository Dependabot alerts/security updates; keep existing CodeQL default setup for Swift/Actions, secret scanning and push protection.
-- [ ] Execute the updated workflows on the exact intended hosted revision and record stable check names, provider, results and URLs.
-- [ ] Obtain pinned-Xcode lint/coverage baselines and decide a scoped adoption change. The local formatter baseline contains 1,640 findings; no formatting rewrite was made.
-
-## Phase 3 — SonarQube Cloud
-
-- [x] Prepare a separate optional main-only reporting workflow, exact CI artifact binding, source/report allowlists, report hashes and path checks.
-- [x] Create a `sonar` GitHub environment restricted to main. No token has been entered and `SONAR_ENABLED` remains unset.
-- [x] Confirm the documented free OSS/EU path and Swift compatibility; do not select a paid trial or assume scoped OSS tokens.
-- [ ] Owner signs in, personally accepts any terms, and supplies the actual existing/new OSS organization selection. The login tab is prepared for handoff.
-- [ ] Install/authorize the SonarQubeCloud GitHub app for **nav-center only**, import the public project, disable automatic analysis and automatic project import, and read back settings.
-- [ ] Store an expiring `SONAR_TOKEN` through secure UI/CLI in this repo's `sonar` environment. Record its real user-derived scope. Set verified organization/project variables.
-- [ ] Analyze a vetted, successful native main revision; verify server-side file counts, coverage totals/paths, external findings and analyzer compatibility against native reports.
-- [ ] Record explicit main baseline SHA/date, calibrated quality gate/new-code definition and representative changed-code results. Enable PR gating only after secure PR analysis and actual check behavior exist. Sonar remains nonrequired during calibration and does not replace tests or CodeQL.
-
-## Phase 4 — enforcement and release evidence
-
-- [x] Change workflow token defaults to read-only and disable workflow PR creation/approval.
-- [x] Restrict Actions to GitHub-owned actions plus the approved Sonar scan action; require maintainer approval for all external-fork runs.
-- [x] Create `release` environment: reviewer `austinkennethtucker`, main-only branch policy, self-review allowed for solo operation. Administrator bypass remains enabled by GitHub; no bot bypass or AI approval was configured.
-- [x] Prepare a disabled main ruleset with PR/review-thread/check requirements, stale-review dismissal, no bypass actors, and no independent-review count that would lock out a solo maintainer.
-- [x] Verify GitHub's SPDX endpoint and prepare source inventory retention with release evidence; document its limits and future final-artifact attestation.
-- [ ] After successful candidate checks, activate the ruleset using the observed GitHub Actions names/provider and verify effective branch behavior. Main remains unprotected now.
-- [ ] Enable full-SHA repository enforcement after the pinned workflows are published; current committed workflows still use floating major tags.
-- [ ] Bind the published release workflow to the configured environment. Environment creation alone does not protect the existing legacy workflow.
-- [ ] Confirm additional human owners if independent review is desired. Add signing credentials only through secure environment secrets, and obtain separate authorization before an actual release/signing/notarization run.
-- [ ] Resolve vendor license notice, signed candidate, provenance, minimum-OS/architecture, GUI/accessibility, authenticated Codex and clean-device release gates. This setup does not establish release readiness.
-
-## Phase 5 — optional independent review
-
-- [x] Keep fresh-session Codex review as the default. Document a repository-only CodeRabbit OSS pilot and current eligibility/rate-limit caveats in the runbook.
-- [ ] Only if elected after the core setup works: connect that single reviewer, measure unique findings/false positives/latency/cost, and retain human merge authority. No CodeRabbit installation or paid usage was initiated.
+The published manual [Beta Release workflow](../.github/workflows/beta-release.yml) uses the `release` environment and restricts execution to main. Repository and release-environment secret-name inventories contain no Apple signing credentials. No credentials, organization-wide access or third-party service terms were added for this closeout.
 
 ## Validation evidence
 
-| Check | Observed result in this task |
+| Scope | Observed evidence |
 | --- | --- |
-| Preservation | Original baseline content unchanged; inherited application source, Swift tests, Python release/CLI tests and vendor files unchanged |
-| Gitleaks 8.30.1 | No matches in isolated current intended source; no matches in all nine local Git commits |
-| actionlint 1.7.12 | Passed all three prepared workflows |
-| zizmor 1.30.1, offline auditor mode | Passed with one documented, narrowly scoped trusted-main `workflow_run` exception; no remaining findings |
-| Shell syntax / diff whitespace | Passed |
-| Release-script regressions | 15 passed, using synthetic signing/build/notary tools |
-| ATS snapshot | All 11 hashes/inventory matched; 23 tests passed with an explicit synthetic root |
-| Tooling tests | 8 passed: report counts/path/symlink/mismatch rejection plus synthetic native-test failure propagation through all three logged pipelines |
-| CLI | Temporary Swift 6.4/CLT build passed; four black-box tests passed against the resolved executable |
-| Formatting | 1,640 local strict findings; advisory, no source edits; pinned-Xcode baseline still pending |
-| Native app, XCTest, ASAN/TSAN, coverage | Blocked/unverified: full Xcode license/setup pending; no test result fabricated |
-| SwiftLint runtime | Official archive SHA-256/version and all five configured rule IDs verified. Lint invocation failed loading sourcekitdInProc (exit 133, invalid/empty report); licensed Xcode/SourceKit execution remains blocked |
-| GitHub settings | Applied and read back; snapshot linked below |
-| GitHub SPDX | Current asynchronous generation/fetch API returned SPDX-2.3 and three packages; retrieval/digest metadata retained. Repository-graph snapshot, not bound to candidate SHA or a complete binary inventory |
-| Hosted candidate CI / Sonar ingestion / release | Not run; no published candidate or authenticated Sonar configuration |
+| Local toolchain | `/Applications/Xcode.app`, Xcode 27.0 / `27A266a`, Swift 6.4; `xcodebuild -checkFirstLaunchStatus` passes. This differs from CI's Xcode 26.3 / Swift 6.2.3 reference. |
+| PR #4 exact tracker binding | Merged at `579785023b8299acaaf36b84fe1ff890cf17d403` after independent review and successful [fresh CI](https://github.com/subdepthtech/nav-center/actions/runs/35729198025) on head `01bebab4eb40a33bcb07f56c7212852211d95683`, including both sanitizers. |
+| PR #5 Actions updates | Refreshed onto PR #4 main at head `7257fc9866505472c319c6bba701dde38eaf576b`; [CI run](https://github.com/subdepthtech/nav-center/actions/runs/35729936348) passed both required checks, and [Claude run](https://github.com/subdepthtech/nav-center/actions/runs/35729936263) succeeded. The recomputed diff still contains only the reviewed action updates; official upstream pins, actionlint 1.7.12 and whitespace checks passed. |
+| Claude startup recovery | [Review run 35729198022](https://github.com/subdepthtech/nav-center/actions/runs/35729198022) succeeded on PR #4 head `01bebab4eb40a33bcb07f56c7212852211d95683` after the environment approval. This verifies execution beyond the former zero-job startup failure. A fresh [conversation event](https://github.com/subdepthtech/nav-center/actions/runs/35729865630) was admitted and correctly skipped without a trigger mention; it was not an authenticated conversation test. |
+| First-use tracker initialization (F2) | Fix `9f94675dec316bf1889e6d57492f79bc9d07afd8`: the new invalid-UTF8 first-action/retry regression failed against unchanged pre-fix source. Separate schema initialization keeps a valid empty tracker after a rejected action; existing invalid databases remain rejected unchanged. Independent review passed; all 48 core tests and normal unfiltered coverage discovery passed (178 tests, 3 optional skips, zero failures). [Hosted native CI](https://github.com/subdepthtech/nav-center/actions/runs/35729584599) and [CodeQL](https://github.com/subdepthtech/nav-center/actions/runs/35729581087) also passed on that source. |
+| Synthetic CLI and app smoke | On application source `9f94675`: explicit disposable workspace, initialization/doctor, import, package preview/create, duplicate refusal without mutation and redacted diagnostics passed. The actual app displayed that workspace, changed the synthetic package to Submitted then Interview, retained Interview after Refresh and rendered posting/resume previews. Read-only SQLite verification found one exact-directory row and exactly two expected history events; derived Markdown matched. The task-owned app exited normally. This is a focused smoke, not full GUI/accessibility acceptance. |
+| Real export smoke | On the same source, installed Pandoc 3.11, Chrome and Poppler 26.09.0 produced HTML, DOCX, PDF and both text extracts from only the synthetic resume. Expected content was verified in the outputs. Broader conversion/Unicode/layout acceptance remains separate. |
+| Script and vendor contracts | Python discovery: 55 tests, 4 CLI skips without `NAVCENTERCTL`; separate CLI smoke passed. All 11 vendor manifest files and 23 synthetic vendor tests passed; shell syntax passed. Stubbed signing/notary tests do not establish Apple acceptance. |
 
-The first CLI build attempt failed because the sandbox could not write the compiler cache; rerunning with task-local caches under authorized native execution passed. The first CLI test invocation used an assumed pre-6.4 output layout and did not execute the binary; after resolving the actual SwiftPM output path, all four tests passed. These setup failures were diagnosed, not treated as application defects.
+Hosted native CI covers debug/release builds, XCTest coverage, address/thread sanitizers, CLI behavior and synthetic release-script contracts. Its artifacts retain actual skip reasons. Formatting and focused SwiftLint are advisory during adoption; review the pinned-Xcode reports before promoting either to a required gate. Historical local formatter counts and the old SourceKit startup failure are not current release evidence.
 
-## Evidence and next owner actions
+## Deferred Sonar onboarding
 
-- [GitHub settings readback](setup-evidence/github-settings-2026-09-16.json) and [preservation baseline](setup-evidence/preservation-baseline.json).
-- [GitHub Actions settings](https://github.com/subdepthtech/nav-center/settings/actions), [environments](https://github.com/subdepthtech/nav-center/settings/environments), [rulesets](https://github.com/subdepthtech/nav-center/settings/rules), [private vulnerability reporting](https://github.com/subdepthtech/nav-center/security/advisories/new).
-- Required input: complete Xcode's agreement/setup; sign in and choose the Sonar OSS organization (EU for a new free account); enter the token securely; decide whether inherited implementation is reviewed/committed first or may be included in a combined ready-for-review PR.
+Sonar is not a development-closeout blocker. The account owner must choose the suitable organization, personally accept any service terms, authorize the GitHub app for **nav-center only**, disable automatic analysis, and supply an expiring analysis credential through the secure environment UI/CLI. No paid trial or purchase is authorized.
 
-No pending question is permission to publish inherited implementation. The prepared ruleset, Sonar activation, hosted validation and release controls must be completed in the order described above.
+After those owner steps, follow [TOOLING.md](TOOLING.md#sonarqube-cloud-onboarding) to set verified project variables and enable the workflow. Validate actual server-side source counts, coverage, findings and quality-gate results against the exact successful native CI artifact. Keep Sonar nonrequired until its imports, baseline and secure PR-check behavior have been demonstrated. A prepared workflow or scanner exit code does not establish ingestion.
+
+## Next milestone: reliable, installable macOS beta
+
+Development checks do not complete these acceptance gates:
+
+- Exercise the native GUI with a disposable workspace: first-use setup, create/edit/save, tracker updates, cleanup/recovery and meaningful error states. Verify keyboard and VoiceOver accessibility. Model tests and a short launch smoke are insufficient.
+- Extend the successful synthetic export smoke to representative Unicode, layout and error cases. Verify a reviewed installed ATS executable and a live signed-in Codex session with package-edit confirmation separately. Standard native tests still skip the opt-in installed Chrome and two ATS tests unless explicitly configured; the separate export smoke does not replace those tests. Preserve skipped or unavailable evidence.
+- Complete the frozen ATS snapshot's missing standalone license/attribution notice before distribution. Keep its manifest and dependency boundary intact; it is not bundled or activated by default.
+- Select and test the supported macOS and architecture matrix. The declared macOS 13 minimum is not established by local macOS 27 or hosted macOS 15 results.
+- Under separate release authorization, configure Apple signing credentials securely and validate a candidate's nested app/CLI and outer DMG signatures, notarization/stapling, Gatekeeper behavior, source/toolchain/checksum lineage and final-artifact provenance.
+- Verify a downloaded candidate on a clean device, including install, first launch, update, uninstall and data preservation. Retain results in the [public release checklist](PUBLIC_RELEASE_CHECKLIST.md); do not infer acceptance from successful build or upload.
+
+CodeRabbit and additional analysis services remain optional. No new product/iOS work or binary distribution is part of this closeout.
