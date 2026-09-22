@@ -896,7 +896,7 @@ private struct RawDocumentPreview: View {
         if let file, let url = store.fileURL(for: file) {
             ZStack(alignment: .bottomTrailing) {
                 if file.format.lowercased() == "pdf" {
-                    PDFDocumentPreview(url: url, revision: "\(store.previewRevision)-\(file.modifiedAt)-\(file.size)")
+                    PDFDocumentPreview(url: url, revision: "\(store.previewRevision)-\(file.modifiedAt)-\(file.size)", load: { store.pdfPreviewData(for: file) })
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color.white)
                 } else {
@@ -921,10 +921,15 @@ private struct RawDocumentPreview: View {
 private struct PDFDocumentPreview: NSViewRepresentable {
     var url: URL
     var revision: String
+    var load: () -> Data?
+
+    struct Key: Equatable {
+        var url: URL
+        var revision: String
+    }
 
     final class Coordinator {
-        var loadedURL: URL?
-        var loadedRevision: String?
+        var loadedKey: Key?
     }
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -937,16 +942,11 @@ private struct PDFDocumentPreview: NSViewRepresentable {
     }
 
     func updateNSView(_ pdfView: PDFView, context: Context) {
-        if context.coordinator.loadedURL != url || context.coordinator.loadedRevision != revision {
-            do {
-                let sourceParent = try PathSafety.realpath(url.deletingLastPathComponent(), label: "PDF preview")
-                let data = try PathSafety.readData(sourceParent.appendingPathComponent(url.lastPathComponent), inside: sourceParent, label: "PDF preview", maxBytes: 64 * 1024 * 1024)
-                pdfView.document = PDFDocument(data: data)
-            } catch {
-                pdfView.document = nil
-            }
-            context.coordinator.loadedURL = url
-            context.coordinator.loadedRevision = revision
+        let key = Key(url: url, revision: revision)
+        if context.coordinator.loadedKey != key {
+            let data = load()
+            pdfView.document = data.flatMap(PDFDocument.init(data:))
+            context.coordinator.loadedKey = key
         }
     }
 }

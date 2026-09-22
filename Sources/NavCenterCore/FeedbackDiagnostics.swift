@@ -92,18 +92,21 @@ public final class FeedbackDiagnostics {
         ) else {
             return []
         }
-        return urls
-            .filter { ($0.pathExtension == "log" || $0.pathExtension == "txt") && ((try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false) }
-            .sorted { lhs, rhs in
-                let left = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                let right = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                return left > right
-            }
-            .prefix(3)
-            .compactMap { url in
-                guard let text = try? PathSafety.readUTF8(url, inside: logs, label: "log", maxBytes: 1_048_576) else { return nil }
-                return redactor.redact(String(text.suffix(2_000)))
-            }
+        return Array(
+            urls
+                .filter { ($0.pathExtension == "log" || $0.pathExtension == "txt") && ((try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false) }
+                .sorted { lhs, rhs in
+                    let left = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    let right = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    return left > right
+                }
+                .lazy
+                .compactMap { url in
+                    guard let text = try? PathSafety.readUTF8(url, inside: logs, label: "log", maxBytes: 1_048_576) else { return nil }
+                    return redactor.redact(String(text.suffix(2_000)))
+                }
+                .prefix(3)
+        )
     }
 
     private func directoryCount(_ url: URL) -> Int {

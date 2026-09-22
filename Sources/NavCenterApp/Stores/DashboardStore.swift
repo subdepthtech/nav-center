@@ -25,6 +25,7 @@ protocol DashboardServicing: AnyObject, Sendable {
     func prepareRealtimeInterviewKit(packageName: String, overwrite: Bool) throws -> RealtimeInterviewKitResponse
     func realtimeInterviewReviewPrompt(packageName: String) throws -> String
     func localFileURL(packageName: String, relativePath: String) throws -> URL
+    func fetchPDFPreviewData(packageName: String, relativePath: String) throws -> Data
     func fetchCodexStatus() throws -> CodexStatusResponse
     func startCodexLogin(type: String) throws -> CodexLoginStartResponse
     func sendCodexChat(_ payload: CodexChatRequest) throws -> CodexChatResponse
@@ -38,6 +39,9 @@ enum MasterResumeSaveOutcome: Equatable {
 }
 
 extension DashboardServicing {
+    func fetchPDFPreviewData(packageName: String, relativePath: String) throws -> Data {
+        throw DashboardAPIError.serverUnavailable("PDF preview is not available.")
+    }
     func cancelCodexTurn() throws { throw DashboardAPIError.serverUnavailable("This service does not support cancellation.") }
     func fetchToolAvailability() throws -> ToolAvailabilityReport { .empty }
     func fetchActions(packageName: String) -> ActionLogResponse {
@@ -567,6 +571,11 @@ final class DashboardStore: ObservableObject {
     func fileURL(for file: PackageFile) -> URL? {
         guard let packageName = selectedPackage?.package.name else { return nil }
         return try? service.localFileURL(packageName: packageName, relativePath: file.relativePath)
+    }
+
+    func pdfPreviewData(for file: PackageFile) -> Data? {
+        guard let packageName = selectedPackage?.package.name else { return nil }
+        return try? service.fetchPDFPreviewData(packageName: packageName, relativePath: file.relativePath)
     }
 
     func validatedFileURL(for file: PackageFile) throws -> URL {

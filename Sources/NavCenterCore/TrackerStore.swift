@@ -142,7 +142,7 @@ public final class TrackerStore {
         let postingURL = resolved.packageURL.appendingPathComponent("posting.md")
         let metadata: [String: String]
         if FileManager.default.fileExists(atPath: postingURL.path) {
-            let data = try PathSafety.readData(postingURL, inside: repoRoot, label: "package posting")
+            let data = try PathSafety.readData(postingURL, inside: repoRoot, label: "package posting", maxBytes: 1_048_576)
             guard let text = String(data: data, encoding: .utf8) else { throw NavCenterError.invalidPath("Package posting is not UTF-8 text.") }
             metadata = Markdown.parseFrontmatter(text).metadata
         } else {

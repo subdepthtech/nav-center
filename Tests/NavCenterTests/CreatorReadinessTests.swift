@@ -86,12 +86,17 @@ final class CreatorReadinessTests: XCTestCase {
 
     func testPayloadOutsideWorkspaceUnderSymlinkedTemporaryDirectoryIsRead() throws {
         let root = try fixture()
-        let outside = try outsidePayloadDirectory()
-        let payloadURL = outside.appendingPathComponent("payload.json")
-        try validPayloadData().write(to: payloadURL)
+        let base = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+            .appendingPathComponent("navcenter-payload-link-" + UUID().uuidString, isDirectory: true)
+        let realdir = base.appendingPathComponent("realdir", isDirectory: true)
+        let linkdir = base.appendingPathComponent("linkdir", isDirectory: true)
+        try FileManager.default.createDirectory(at: realdir, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: linkdir, withDestinationURL: realdir)
+        addTeardownBlock { try? FileManager.default.removeItem(at: base) }
+        try validPayloadData().write(to: realdir.appendingPathComponent("payload.json"))
         let creator = ApplicationCreator(repoRoot: root)
 
-        let result = try creator.create(options: options(.payload(payloadURL.path)))
+        let result = try creator.create(options: options(.payload(linkdir.appendingPathComponent("payload.json").path)))
         let posting = try String(contentsOf: result.postingURL)
         XCTAssertTrue(posting.contains("Synthetic Café"))
         XCTAssertTrue(posting.contains("source_type: \"payload\""))

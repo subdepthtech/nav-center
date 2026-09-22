@@ -193,6 +193,38 @@ final class WorkspaceFeatureTests: XCTestCase {
         XCTAssertEqual(redacted.recentLogs, [])
     }
 
+    func testFeedbackDiagnosticsAppliesLogLimitAfterSkippingOversizedLogs() throws {
+        let temp = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: temp) }
+        let home = temp.appendingPathComponent("Users/synthetic", isDirectory: true).standardizedFileURL
+        let workspace = home.appendingPathComponent("Workspace", isDirectory: true)
+        try WorkspaceManager(workspaceRoot: workspace).initialize()
+        let logs = workspace.appendingPathComponent("logs", isDirectory: true)
+        let now = Date()
+        let older = (0..<3).map { "older-small-log-\($0)" }
+        for (index, text) in older.enumerated() {
+            let url = logs.appendingPathComponent("small-\(index).log")
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes(
+                [.modificationDate: now.addingTimeInterval(TimeInterval(-(index + 1) * 60))],
+                ofItemAtPath: url.path
+            )
+        }
+        let oversized = logs.appendingPathComponent("newest-oversized.log")
+        try Data(count: 1_048_577).write(to: oversized)
+        try FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: oversized.path)
+        let diagnostics = FeedbackDiagnostics(
+            workspaceRoot: workspace,
+            homeDirectory: home,
+            appVersion: "0.1.0-beta",
+            toolProbe: ToolProbeConfiguration(environment: ["PATH": ""], homeDirectory: home, fallbackDirectories: [], isExecutableRegularFile: { _ in false })
+        )
+
+        let raw = diagnostics.report(redact: false)
+
+        XCTAssertEqual(raw.recentLogs, older)
+    }
+
     private func makeTempDirectory() throws -> URL {
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("nav-center-tests-\(UUID().uuidString)", isDirectory: true)

@@ -218,6 +218,14 @@ final class NativeDashboardService: @unchecked Sendable {
         return url
     }
 
+    func fetchPDFPreviewData(packageName: String, relativePath: String) throws -> Data {
+        let resolved = try PathSafety.resolvePackage(root: repoRoot, packageName: packageName)
+        guard !relativePath.contains(".."), !relativePath.hasPrefix("/"), !relativePath.contains("\\") else {
+            throw DashboardAPIError.serverUnavailable("Package file path is not allowed: \(relativePath)")
+        }
+        return try PathSafety.readData(resolved.packageURL.appendingPathComponent(relativePath), inside: resolved.packageURL, label: "PDF preview", maxBytes: 64 * 1024 * 1024)
+    }
+
     func fetchCodexStatus() throws -> CodexStatusResponse {
         try NativeCodexBridge.shared(repoRoot: repoRoot).status()
     }

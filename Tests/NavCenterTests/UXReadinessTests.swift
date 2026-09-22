@@ -676,6 +676,57 @@ final class UXReadinessTests: XCTestCase {
         }
     }
 
+    func testPDFPreviewReadsPackageArtifactWithinLimit() throws {
+        let root = try workspace()
+        let service = NativeDashboardService(repoRoot: root)
+        _ = try service.fetchSummary()
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+        let artifacts = root.appendingPathComponent("applications/\(name)/artifacts")
+        try FileManager.default.createDirectory(at: artifacts, withIntermediateDirectories: true)
+        let bytes = Data("%PDF-1.4\n%synthetic\n".utf8)
+        try bytes.write(to: artifacts.appendingPathComponent("Resume.pdf"))
+
+        XCTAssertEqual(try service.fetchPDFPreviewData(packageName: name, relativePath: "artifacts/Resume.pdf"), bytes)
+    }
+
+    func testPDFPreviewRefusesSymlinkedArtifactsDirectory() throws {
+        let root = try workspace()
+        let service = NativeDashboardService(repoRoot: root)
+        _ = try service.fetchSummary()
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+        let outside = root.appendingPathComponent("outside-artifacts")
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        try Data("%PDF-1.4\n%outside\n".utf8).write(to: outside.appendingPathComponent("Resume.pdf"))
+        try FileManager.default.createSymbolicLink(
+            at: root.appendingPathComponent("applications/\(name)/artifacts"),
+            withDestinationURL: outside
+        )
+
+        XCTAssertThrowsError(try service.fetchPDFPreviewData(packageName: name, relativePath: "artifacts/Resume.pdf"))
+    }
+
+    func testPDFPreviewRefusesOversizedFile() throws {
+        let root = try workspace()
+        let service = NativeDashboardService(repoRoot: root)
+        _ = try service.fetchSummary()
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+        let artifacts = root.appendingPathComponent("applications/\(name)/artifacts")
+        try FileManager.default.createDirectory(at: artifacts, withIntermediateDirectories: true)
+        let file = artifacts.appendingPathComponent("Resume.pdf")
+        try Data().write(to: file)
+        let handle = try FileHandle(forWritingTo: file)
+        try handle.seek(toOffset: UInt64(64 * 1024 * 1024))
+        try handle.write(contentsOf: Data([0]))
+        try handle.close()
+
+        XCTAssertThrowsError(try service.fetchPDFPreviewData(packageName: name, relativePath: "artifacts/Resume.pdf")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("67108864"), error.localizedDescription)
+        }
+    }
+
     private func workspace() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("nav-center-ux-tests-" + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)

@@ -59,9 +59,7 @@ public final class InterviewPrepGenerator {
     }
 
     private func readText(_ url: URL, label: String) throws -> String {
-        let data = try PathSafety.readData(url, inside: repoRoot, label: label, maxBytes: 4 * 1024 * 1024)
-        guard let text = String(data: data, encoding: .utf8) else { throw NavCenterError.invalidPath("\(label) must contain UTF-8 text.") }
-        return text
+        try PathSafety.readUTF8(url, inside: repoRoot, label: label, maxBytes: 1_048_576)
     }
 
     private func findResumeFile(_ packageURL: URL) throws -> String? {
