@@ -123,7 +123,7 @@ public final class RealtimeInterviewKitGenerator {
     private func loadContext(resolved: ResolvedPackage) throws -> InterviewContext {
         let postingURL = resolved.packageURL.appendingPathComponent("posting.md")
         try PathSafety.assertExistingRegularFile(postingURL, inside: resolved.packageURL, label: "posting.md")
-        let posting = Markdown.parseFrontmatter(try String(contentsOf: postingURL))
+        let posting = Markdown.parseFrontmatter(try PathSafety.readUTF8(postingURL, inside: resolved.packageURL, label: "posting.md", maxBytes: 1_048_576))
 
         let resumeFile = try FileManager.default.contentsOfDirectory(atPath: resolved.packageURL.path)
             .filter { $0.range(of: #"^Resume_.*\.md$"#, options: .regularExpression) != nil }
@@ -132,13 +132,13 @@ public final class RealtimeInterviewKitGenerator {
         let resumeBody = try resumeFile.map { file in
             let url = resolved.packageURL.appendingPathComponent(file)
             try PathSafety.assertExistingRegularFile(url, inside: resolved.packageURL, label: "Resume source")
-            return Markdown.parseFrontmatter(try String(contentsOf: url)).body
+            return Markdown.parseFrontmatter(try PathSafety.readUTF8(url, inside: resolved.packageURL, label: "Resume source", maxBytes: 1_048_576)).body
         } ?? ""
         let prepURL = resolved.packageURL.appendingPathComponent("interview-prep.md")
         let prepBody: String
         if FileManager.default.fileExists(atPath: prepURL.path) {
             try PathSafety.assertExistingRegularFile(prepURL, inside: resolved.packageURL, label: "interview-prep.md")
-            prepBody = Markdown.parseFrontmatter(try String(contentsOf: prepURL)).body
+            prepBody = Markdown.parseFrontmatter(try PathSafety.readUTF8(prepURL, inside: resolved.packageURL, label: "interview-prep.md", maxBytes: 1_048_576)).body
         } else {
             prepBody = ""
         }

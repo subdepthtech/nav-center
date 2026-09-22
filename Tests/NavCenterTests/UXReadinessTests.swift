@@ -662,6 +662,71 @@ final class UXReadinessTests: XCTestCase {
         XCTAssertTrue(rows[1].accessibilityLabel.contains("dated \(packageOnly.packageDate)"))
     }
 
+    func testOversizedPreviewFileReportsLimitInsteadOfLoading() throws {
+        let root = try workspace()
+        let service = NativeDashboardService(repoRoot: root)
+        _ = try service.fetchSummary()
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+        let preview = root.appendingPathComponent("applications/\(name)/interview-prep.md")
+        try Data(count: 4 * 1024 * 1024 + 1).write(to: preview)
+
+        XCTAssertThrowsError(try service.fetchFilePreview(packageName: name, file: "interview-prep.md")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("4194304"), error.localizedDescription)
+        }
+    }
+
+    func testPDFPreviewReadsPackageArtifactWithinLimit() throws {
+        let root = try workspace()
+        let service = NativeDashboardService(repoRoot: root)
+        _ = try service.fetchSummary()
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+        let artifacts = root.appendingPathComponent("applications/\(name)/artifacts")
+        try FileManager.default.createDirectory(at: artifacts, withIntermediateDirectories: true)
+        let bytes = Data("%PDF-1.4\n%synthetic\n".utf8)
+        try bytes.write(to: artifacts.appendingPathComponent("Resume.pdf"))
+
+        XCTAssertEqual(try service.fetchPDFPreviewData(packageName: name, relativePath: "artifacts/Resume.pdf"), bytes)
+    }
+
+    func testPDFPreviewRefusesSymlinkedArtifactsDirectory() throws {
+        let root = try workspace()
+        let service = NativeDashboardService(repoRoot: root)
+        _ = try service.fetchSummary()
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+        let outside = root.appendingPathComponent("outside-artifacts")
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        try Data("%PDF-1.4\n%outside\n".utf8).write(to: outside.appendingPathComponent("Resume.pdf"))
+        try FileManager.default.createSymbolicLink(
+            at: root.appendingPathComponent("applications/\(name)/artifacts"),
+            withDestinationURL: outside
+        )
+
+        XCTAssertThrowsError(try service.fetchPDFPreviewData(packageName: name, relativePath: "artifacts/Resume.pdf"))
+    }
+
+    func testPDFPreviewRefusesOversizedFile() throws {
+        let root = try workspace()
+        let service = NativeDashboardService(repoRoot: root)
+        _ = try service.fetchSummary()
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+        let artifacts = root.appendingPathComponent("applications/\(name)/artifacts")
+        try FileManager.default.createDirectory(at: artifacts, withIntermediateDirectories: true)
+        let file = artifacts.appendingPathComponent("Resume.pdf")
+        try Data().write(to: file)
+        let handle = try FileHandle(forWritingTo: file)
+        try handle.seek(toOffset: UInt64(64 * 1024 * 1024))
+        try handle.write(contentsOf: Data([0]))
+        try handle.close()
+
+        XCTAssertThrowsError(try service.fetchPDFPreviewData(packageName: name, relativePath: "artifacts/Resume.pdf")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("67108864"), error.localizedDescription)
+        }
+    }
+
     private func workspace() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("nav-center-ux-tests-" + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
@@ -803,15 +868,6 @@ private final class UXTestService: DashboardServicing, @unchecked Sendable {
             application: nil,
             statusEvents: [],
             sources: Self.sources()
-        )
-    }
-
-    func fetchTab(packageName: String, tabKey: String, file: String?) throws -> PackageTabPreviewResponse {
-        PackageTabPreviewResponse(
-            packageName: packageName,
-            tab: PackageTab(key: tabKey, label: "Posting", available: true, fileCount: 0, primaryFile: nil, files: []),
-            file: nil,
-            content: nil
         )
     }
 

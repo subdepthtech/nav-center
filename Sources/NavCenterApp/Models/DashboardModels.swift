@@ -364,13 +364,6 @@ struct PackageHealth: Codable, Hashable {
     )
 }
 
-struct PackageTabPreviewResponse: Codable {
-    var packageName: String
-    var tab: PackageTab
-    var file: PackagePreviewFile?
-    var content: String?
-}
-
 struct PackageFilePreviewResponse: Codable, Hashable {
     var file: PackagePreviewFile
     var content: String

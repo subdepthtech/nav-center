@@ -165,10 +165,16 @@ public final class ApplicationCreator {
             )
         case .payload(let path):
             let url = (path.hasPrefix("/") ? URL(fileURLWithPath: path) : repoRoot.appendingPathComponent(path)).standardizedFileURL
+            let data: Data
             if PathSafety.isInside(url, parent: repoRoot) {
                 try PathSafety.assertExistingRegularFile(url, inside: repoRoot, label: "Payload file")
+                data = try PathSafety.readData(url, inside: repoRoot, label: "Payload file", maxBytes: 4_194_304)
+            } else {
+                // Resolve only the payload parent; the leaf must still pass the no-follow read.
+                let sourceParent = try PathSafety.realpath(url.deletingLastPathComponent(), label: "source document parent")
+                let sourceFile = sourceParent.appendingPathComponent(url.lastPathComponent)
+                data = try PathSafety.readData(sourceFile, inside: sourceParent, label: "Payload file", maxBytes: 4_194_304)
             }
-            let data = try Data(contentsOf: url)
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
             return Source(
                 type: "payload",
@@ -332,21 +338,6 @@ public final class ApplicationCreator {
         return String(result.stdout[..<boundary])
     }
 
-}
-
-private struct IPv4Address {
-    let octets: [UInt8]
-
-    init?(_ value: String) {
-        let parts = value.split(separator: ".")
-        guard parts.count == 4 else { return nil }
-        var parsed: [UInt8] = []
-        for part in parts {
-            guard let octet = UInt8(part) else { return nil }
-            parsed.append(octet)
-        }
-        octets = parsed
-    }
 }
 
 private func string(_ json: [String: Any], _ keys: String...) -> String {

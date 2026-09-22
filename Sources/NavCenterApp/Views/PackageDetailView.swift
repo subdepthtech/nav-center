@@ -1,6 +1,7 @@
 import SwiftUI
 import PDFKit
 import AppKit
+import NavCenterCore
 
 private enum PackageDetailLayout {
     static let wideLayoutMinimumWidth: CGFloat = 980
@@ -166,7 +167,7 @@ private struct PackageTabs: View {
     var body: some View {
         let tabSelection = Binding(
             get: { store.activePackageTabKey },
-            set: { tabKey in Task { await store.loadTab(tabKey) } }
+            set: { tabKey in store.selectTab(tabKey) }
         )
 
         VStack(alignment: .leading, spacing: 10) {
@@ -895,7 +896,7 @@ private struct RawDocumentPreview: View {
         if let file, let url = store.fileURL(for: file) {
             ZStack(alignment: .bottomTrailing) {
                 if file.format.lowercased() == "pdf" {
-                    PDFDocumentPreview(url: url, revision: "\(store.previewRevision)-\(file.modifiedAt)-\(file.size)")
+                    PDFDocumentPreview(url: url, revision: "\(store.previewRevision)-\(file.modifiedAt)-\(file.size)", load: { store.pdfPreviewData(for: file) })
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color.white)
                 } else {
@@ -920,8 +921,16 @@ private struct RawDocumentPreview: View {
 private struct PDFDocumentPreview: NSViewRepresentable {
     var url: URL
     var revision: String
+    var load: () -> Data?
 
-    final class Coordinator { var loadedRevision: String? }
+    struct Key: Equatable {
+        var url: URL
+        var revision: String
+    }
+
+    final class Coordinator {
+        var loadedKey: Key?
+    }
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> PDFView {
@@ -933,9 +942,11 @@ private struct PDFDocumentPreview: NSViewRepresentable {
     }
 
     func updateNSView(_ pdfView: PDFView, context: Context) {
-        if pdfView.document?.documentURL != url || context.coordinator.loadedRevision != revision {
-            pdfView.document = PDFDocument(url: url)
-            context.coordinator.loadedRevision = revision
+        let key = Key(url: url, revision: revision)
+        if context.coordinator.loadedKey != key {
+            let data = load()
+            pdfView.document = data.flatMap(PDFDocument.init(data:))
+            context.coordinator.loadedKey = key
         }
     }
 }

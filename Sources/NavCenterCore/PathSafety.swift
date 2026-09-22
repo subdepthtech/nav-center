@@ -136,6 +136,14 @@ public enum PathSafety {
         }
     }
 
+    public static func readUTF8(_ url: URL, inside root: URL, label: String, maxBytes: Int) throws -> String {
+        let data = try readData(url, inside: root, label: label, maxBytes: maxBytes)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw NavCenterError.invalidPath("\(label) is not valid UTF-8.")
+        }
+        return text
+    }
+
     public static func atomicWrite(_ data: Data, to url: URL, inside root: URL, label: String) throws {
         let rootIdentity = try identity(root)
         try withParent(url, inside: root, createParents: true, label: label) { parent, name in

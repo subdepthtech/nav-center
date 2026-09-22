@@ -48,7 +48,7 @@ public final class FeedbackDiagnostics {
         var metadata = Bundle.main.infoDictionary ?? [:]
         if metadata["NavCenterVersion"] == nil, let executable = Bundle.main.executableURL {
             let plist = executable.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Info.plist")
-            if let data = try? Data(contentsOf: plist), let value = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] { metadata = value }
+            if let data = try? PathSafety.readData(plist, inside: plist.deletingLastPathComponent(), label: "Info.plist", maxBytes: 256 * 1024), let value = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] { metadata = value }
         }
         let version = metadata["NavCenterVersion"] as? String ?? metadata["CFBundleShortVersionString"] as? String ?? "development"
         if let build = metadata["CFBundleVersion"] as? String { return "\(version) (\(build))" }
@@ -92,18 +92,21 @@ public final class FeedbackDiagnostics {
         ) else {
             return []
         }
-        return urls
-            .filter { ($0.pathExtension == "log" || $0.pathExtension == "txt") && ((try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false) }
-            .sorted { lhs, rhs in
-                let left = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                let right = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                return left > right
-            }
-            .prefix(3)
-            .compactMap { url in
-                guard let text = try? String(contentsOf: url) else { return nil }
-                return redactor.redact(String(text.suffix(2_000)))
-            }
+        return Array(
+            urls
+                .filter { ($0.pathExtension == "log" || $0.pathExtension == "txt") && ((try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false) }
+                .sorted { lhs, rhs in
+                    let left = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    let right = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    return left > right
+                }
+                .lazy
+                .compactMap { url in
+                    guard let text = try? PathSafety.readUTF8(url, inside: logs, label: "log", maxBytes: 1_048_576) else { return nil }
+                    return redactor.redact(String(text.suffix(2_000)))
+                }
+                .prefix(3)
+        )
     }
 
     private func directoryCount(_ url: URL) -> Int {
