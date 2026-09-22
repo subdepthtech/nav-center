@@ -382,6 +382,153 @@ final class ATSActionReadinessTests: XCTestCase {
         )
     }
 
+    func testExportArtifactsAliasRunsRefreshResumeWithConfirmation() throws {
+        let environment = ["PATH": ""]
+        let pdf = package.appendingPathComponent("artifacts/Resume_\(packageName).pdf")
+        for (index, key) in ["export-artifacts", "export_artifacts"].enumerated() {
+            var spawned = false
+            let result = try PackageActionRunner(repoRoot: root, environment: environment).run(
+                packageName: packageName,
+                actionKey: key,
+                confirmed: true
+            ) { executable, args, cwd, _ in
+                spawned = true
+                XCTAssertEqual(executable, "native-export")
+                XCTAssertEqual(args, ["export", "applications/\(self.packageName)/Resume_\(self.packageName).md"])
+                XCTAssertEqual(cwd.standardizedFileURL.path, self.root.standardizedFileURL.path)
+                try Data("%PDF-1.7 synthetic export \(index)\n".utf8).write(to: pdf)
+                return ProcessResult(status: 0, stdout: "", stderr: "")
+            }
+            XCTAssertTrue(spawned, key)
+            XCTAssertEqual(result.action, "refresh-resume", key)
+            XCTAssertEqual(result.label, "Export Resume Artifacts", key)
+            XCTAssertEqual(result.status, "succeeded", result.message)
+            XCTAssertEqual(result.message, "Resume artifacts exported: HTML, DOCX, PDF, and text extractions.")
+        }
+    }
+
+    func testExportArtifactsAliasIsBlockedWithoutConfirmation() throws {
+        for key in ["export-artifacts", "export_artifacts"] {
+            var spawned = false
+            let result = try PackageActionRunner(repoRoot: root, environment: ["PATH": ""]).run(
+                packageName: packageName,
+                actionKey: key,
+                confirmed: false
+            ) { _, _, _, _ in
+                spawned = true
+                return ProcessResult(status: 0, stdout: "", stderr: "")
+            }
+            XCTAssertFalse(spawned, key)
+            XCTAssertEqual(result.status, "blocked", key)
+            XCTAssertEqual(result.action, "refresh-resume", key)
+            XCTAssertEqual(result.label, "Export Resume Artifacts", key)
+            XCTAssertNil(result.exitCode)
+        }
+        XCTAssertThrowsError(try PackageActionRunner(repoRoot: root).run(
+            packageName: packageName,
+            actionKey: "export",
+            confirmed: false
+        )) { error in
+            XCTAssertTrue(error.localizedDescription.contains("Package action is not supported"), error.localizedDescription)
+        }
+    }
+
+    func testConfirmedExportArtifactsRunsBuiltInExporterThroughPreflight() throws {
+        let processList = try ProcessRunner.run("/usr/bin/pgrep", ["-f", "nav-center-nonexistent-\(UUID().uuidString)"], cwd: root)
+        guard processList.status == 1 else {
+            throw XCTSkip("Chrome shutdown verification requires pgrep access to the process list.")
+        }
+        _ = try WorkspaceManager(workspaceRoot: root).initialize()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("templates/resume.css").path))
+
+        let tools = root.appendingPathComponent("export-tools")
+        try FileManager.default.createDirectory(at: tools, withIntermediateDirectories: true)
+        let pandoc = tools.appendingPathComponent("pandoc")
+        let chrome = tools.appendingPathComponent("chrome")
+        let pdftotext = tools.appendingPathComponent("pdftotext")
+        try """
+        #!/bin/sh
+        if [ "$1" = "--version" ]; then exit 0; fi
+        output=''
+        while [ "$#" -gt 0 ]; do
+          if [ "$1" = "-o" ]; then shift; output="$1"; fi
+          shift
+        done
+        if [ -z "$output" ]; then printf 'A complete synthetic document extraction for validation.'; exit 0; fi
+        case "$output" in
+          *.html) printf '<html>A complete synthetic document.</html>' > "$output" ;;
+          *.docx) printf 'PK synthetic document package' > "$output" ;;
+          *) exit 9 ;;
+        esac
+        """.write(to: pandoc, atomically: true, encoding: .utf8)
+        try """
+        #!/bin/sh
+        for value in "$@"; do
+          case "$value" in --print-to-pdf=*) output="${value#--print-to-pdf=}" ;; esac
+        done
+        printf '%%PDF-1.7 synthetic document' > "$output"
+        """.write(to: chrome, atomically: true, encoding: .utf8)
+        try "#!/bin/sh\nif [ \"$1\" = \"-v\" ]; then exit 0; fi\nprintf 'A complete synthetic PDF extraction for validation.'\n"
+            .write(to: pdftotext, atomically: true, encoding: .utf8)
+        for file in [pandoc, chrome, pdftotext] {
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
+        }
+
+        let environment = [
+            "PATH": "",
+            "PANDOC_BIN": pandoc.path,
+            "CHROME_BIN": chrome.path,
+            "PDFTOTEXT_BIN": pdftotext.path,
+            "NAV_CENTER_SKIP_VAULT_SYNC": "1"
+        ]
+        let probe = ToolProbeConfiguration(environment: environment, homeDirectory: root, fallbackDirectories: [])
+        let result = try PackageActionRunner(repoRoot: root, environment: environment, toolProbe: probe).run(
+            packageName: packageName,
+            actionKey: "export-artifacts",
+            confirmed: true
+        )
+        XCTAssertEqual(result.status, "succeeded", result.message)
+        XCTAssertEqual(result.message, "Resume artifacts exported: HTML, DOCX, PDF, and text extractions.")
+        let artifacts = package.appendingPathComponent("artifacts")
+        let base = "Resume_\(packageName)"
+        for suffix in ["html", "docx", "pdf", "docx.txt", "pdf.txt"] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: artifacts.appendingPathComponent("\(base).\(suffix)").path), suffix)
+        }
+    }
+
+    func testExternalExporterSuccessOnlyClaimsRefreshedPDF() throws {
+        let executable = root.appendingPathComponent("external-exporter")
+        let pdf = package.appendingPathComponent("artifacts/Resume_\(packageName).pdf")
+        let result = try PackageActionRunner(repoRoot: root, environment: ["NAV_CENTER_EXPORT_BIN": executable.path]).run(
+            packageName: packageName,
+            actionKey: "export-artifacts",
+            confirmed: true
+        ) { command, _, _, _ in
+            XCTAssertEqual(command, executable.path)
+            try Data("%PDF-1.7 synthetic external export\n".utf8).write(to: pdf)
+            return ProcessResult(status: 0, stdout: "", stderr: "")
+        }
+        XCTAssertEqual(result.status, "succeeded", result.message)
+        XCTAssertEqual(result.message, "Resume PDF refreshed by the exporter set in NAV_CENTER_EXPORT_BIN.")
+    }
+
+    func testBuiltInExportRefusesBeforeCreatingArtifactsWhenPandocMissing() throws {
+        let artifacts = package.appendingPathComponent("artifacts")
+        try FileManager.default.removeItem(at: artifacts)
+        let probe = ToolProbeConfiguration(environment: ["PATH": ""], homeDirectory: root, fallbackDirectories: [])
+        let result = try PackageActionRunner(repoRoot: root, environment: probe.environment, toolProbe: probe).run(
+            packageName: packageName,
+            actionKey: "refresh-resume",
+            confirmed: true
+        )
+        XCTAssertEqual(result.status, "failed")
+        XCTAssertNil(result.exitCode)
+        XCTAssertTrue(result.message.hasPrefix("Document export needs Pandoc"), result.message)
+        XCTAssertTrue(result.message.contains("Pandoc"), result.message)
+        XCTAssertTrue(result.message.contains("PANDOC_BIN"), result.message)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: artifacts.path))
+    }
+
     private func isolatedProbe(environment: [String: String] = ["PATH": ""]) -> ToolProbeConfiguration {
         ToolProbeConfiguration(environment: environment, homeDirectory: root, fallbackDirectories: [], isExecutableRegularFile: { _ in false })
     }

@@ -16,9 +16,9 @@ class CLITests(unittest.TestCase):
         self.workspace = self.root / "workspace"
         self.env = dict(os.environ, NAV_CENTER_WORKSPACE_ROOT=str(self.workspace))
 
-    def run_cli(self, *args):
-        return subprocess.run([os.environ["NAVCENTERCTL"], *map(str, args)], env=self.env,
-                              capture_output=True, text=True, timeout=15)
+    def run_cli(self, *args, env=None, timeout=15):
+        return subprocess.run([os.environ["NAVCENTERCTL"], *map(str, args)], env=env or self.env,
+                              capture_output=True, text=True, timeout=timeout)
 
     def test_invalid_invocations_never_initialize_workspace(self):
         for args in [("init-workspace", "--workspace"),
@@ -280,6 +280,140 @@ class CLITests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertIn("path hidden", rows[0])
         self.assertNotIn(secret, text.stdout)
+
+    def test_export_artifacts_bad_invocations_never_create_workspace(self):
+        invocations = [
+            ("export-artifacts",),
+            ("export-artifacts", "--source"),
+            ("export-artifacts", "--bogus"),
+        ]
+        for args in invocations:
+            with self.subTest(args=args):
+                result = self.run_cli(*args)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertFalse(self.workspace.exists())
+
+    def test_export_artifacts_with_stub_tools_writes_complete_set(self):
+        tools = self.make_export_tools()
+        self.assertEqual(self.run_cli("init-workspace").returncode, 0)
+        package = "2026-01-01_Synthetic_Engineer"
+        package_dir = self.workspace / "applications" / package
+        package_dir.mkdir()
+        (package_dir / f"Resume_{package}.md").write_text(
+            "# Synthetic Engineer\n\nSynthetic fixture text for the export command.\n"
+        )
+        env = dict(self.env, NAV_CENTER_SKIP_VAULT_SYNC="1", **tools)
+        result = self.run_cli(
+            "export-artifacts", "--source", f"applications/{package}/Resume_{package}.md", env=env
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        artifacts = package_dir / "artifacts"
+        for name in (
+            f"Resume_{package}.html",
+            f"Resume_{package}.docx",
+            f"Resume_{package}.pdf",
+            f"Resume_{package}.docx.txt",
+            f"Resume_{package}.pdf.txt",
+        ):
+            self.assertTrue((artifacts / name).is_file(), name)
+
+    def test_export_artifacts_missing_pandoc_writes_nothing(self):
+        self.assertEqual(self.run_cli("init-workspace").returncode, 0)
+        package = "2026-01-01_Synthetic_Engineer"
+        package_dir = self.workspace / "applications" / package
+        package_dir.mkdir()
+        (package_dir / f"Resume_{package}.md").write_text("Synthetic resume for an export refusal.\n")
+        env = dict(self.env, PANDOC_BIN="/nonexistent/pandoc", NAV_CENTER_SKIP_VAULT_SYNC="1")
+        result = self.run_cli(
+            "export-artifacts", "--source", f"applications/{package}/Resume_{package}.md", env=env
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Pandoc", result.stderr)
+        self.assertIn("PANDOC_BIN", result.stderr)
+        self.assertFalse((package_dir / "artifacts").exists())
+
+    def test_export_artifacts_refuses_source_outside_allowed_roots(self):
+        tools = self.make_export_tools()
+        self.assertEqual(self.run_cli("init-workspace").returncode, 0)
+        notes = self.workspace / "notes"
+        notes.mkdir()
+        (notes / "x.md").write_text("Synthetic note outside the export roots.\n")
+        env = dict(self.env, NAV_CENTER_SKIP_VAULT_SYNC="1", **tools)
+        result = self.run_cli("export-artifacts", "--source", "notes/x.md", env=env)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Source markdown must live under", result.stderr)
+        self.assertFalse((self.workspace / "output").exists())
+
+    @unittest.skipUnless(
+        os.environ.get("NAV_CENTER_TEST_REAL_EXPORT") == "1",
+        "Set NAV_CENTER_TEST_REAL_EXPORT=1 for the installed export-chain check.",
+    )
+    def test_export_artifacts_real_tools_produce_complete_artifact_set(self):
+        self.assertEqual(self.run_cli("init-workspace").returncode, 0)
+        package = "2026-01-01_Synthetic_Engineer"
+        package_dir = self.workspace / "applications" / package
+        package_dir.mkdir()
+        (package_dir / f"Resume_{package}.md").write_text(
+            "# Synthetic Engineer\n\nSynthetic fixture text for the real export lane.\n\n"
+            "Experience building synthetic document pipelines.\n"
+        )
+        env = dict(self.env, NAV_CENTER_SKIP_VAULT_SYNC="1")
+        for name in ("PANDOC_BIN", "CHROME_BIN", "PDFTOTEXT_BIN", "NAV_CENTER_EXPORT_BIN", "NAV_CENTER_VAULT_DIR"):
+            env.pop(name, None)
+        result = self.run_cli(
+            "export-artifacts", "--source", f"applications/{package}/Resume_{package}.md",
+            env=env, timeout=120,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        artifacts = package_dir / "artifacts"
+        for name in (
+            f"Resume_{package}.html",
+            f"Resume_{package}.docx",
+            f"Resume_{package}.pdf",
+            f"Resume_{package}.docx.txt",
+            f"Resume_{package}.pdf.txt",
+        ):
+            self.assertTrue((artifacts / name).is_file(), name)
+
+    def make_export_tools(self):
+        directory = self.root / "export-tools"
+        directory.mkdir()
+        pandoc = directory / "pandoc"
+        chrome = directory / "chrome"
+        extract = directory / "pdftotext"
+        self.write_executable(pandoc, """#!/bin/sh
+if [ "$1" = "--version" ]; then exit 0; fi
+output=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then shift; output="$1"; fi
+  shift
+done
+if [ -z "$output" ]; then printf 'A complete synthetic document extraction for validation.'; exit 0; fi
+case "$output" in
+  *.html) printf '<html>A complete synthetic document.</html>' > "$output" ;;
+  *.docx) printf 'PK synthetic document package' > "$output" ;;
+  *) exit 9 ;;
+esac
+""")
+        self.write_executable(chrome, """#!/bin/sh
+for value in "$@"; do
+  case "$value" in --print-to-pdf=*) output="${value#--print-to-pdf=}" ;; esac
+done
+printf '%%PDF-1.7 synthetic document' > "$output"
+""")
+        self.write_executable(extract, """#!/bin/sh
+if [ "$1" = "-v" ]; then exit 0; fi
+printf 'A complete synthetic PDF extraction for validation.'
+""")
+        return {
+            "PANDOC_BIN": str(pandoc),
+            "CHROME_BIN": str(chrome),
+            "PDFTOTEXT_BIN": str(extract),
+        }
+
+    def write_executable(self, path, text):
+        path.write_text(text)
+        path.chmod(0o700)
 
     def decoded_text(self, stdout):
         values = []

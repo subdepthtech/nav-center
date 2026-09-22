@@ -653,9 +653,10 @@ private struct ExportsWorkspaceView: View {
                 ])
                 Panel("Export Surfaces") {
                     VStack(alignment: .leading, spacing: 10) {
+                        Text("Export a package's resume from Package Detail > Quick Actions > Export Artifacts (confirmation required).")
                         Text("Package artifacts are opened from Package Detail > Artifacts.")
                         Text("Tracker CSV export remains local and is validated by the dashboard test suite.")
-                        Text("Vault sync and bulk export actions stay disabled in-app until their confirmation gates are wired.")
+                        Text("Vault sync and bulk export stay disabled in-app until their confirmation gates are wired.")
                     }
                     .foregroundStyle(.secondary)
                 }

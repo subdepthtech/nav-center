@@ -85,7 +85,10 @@ final class RendererReadinessTests: XCTestCase {
     func testInstalledChromeRendersStyledUnicodeDocumentWithPrivateProfile() throws {
         guard ProcessInfo.processInfo.environment["NAV_CENTER_TEST_REAL_CHROME"] == "1" else { throw XCTSkip("Set NAV_CENTER_TEST_REAL_CHROME=1 for the installed-Chrome integration check.") }
         let chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-        guard FileManager.default.isExecutableFile(atPath: chrome) else { throw XCTSkip("Chrome is not installed; no dependency is installed by this test.") }
+        guard FileManager.default.isExecutableFile(atPath: chrome) else {
+            XCTFail("NAV_CENTER_TEST_REAL_CHROME=1 but Google Chrome is not executable at \(chrome).")
+            return
+        }
         let root = try workspace()
         let html = try InertDocumentRenderer.document(fragment: fragment, css: stylesheet)
         let pdf = root.appendingPathComponent("styled-unicode.pdf")

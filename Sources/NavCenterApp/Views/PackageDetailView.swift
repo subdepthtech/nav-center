@@ -1059,8 +1059,9 @@ private struct PackageRailContent: View {
 
             Panel("Quick Actions") {
                 ForEach(PackageAction.railActions) { action in
+                    let availability = action.availability(store.toolAvailability)
                     Button {
-                        if action.isEnabled {
+                        if availability.enabled {
                             pendingAction = action
                         }
                     } label: {
@@ -1069,16 +1070,17 @@ private struct PackageRailContent: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(action.isPrimary ? .blue : .secondary)
-                    .disabled(store.isRunningAction || !action.isEnabled)
+                    .disabled(store.isRunningAction || !availability.enabled)
+                    .help(availability.reason ?? "")
                 }
 
                 if let pendingAction {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(pendingAction.confirmationTitle)
                             .font(.headline)
-                        Text(pendingAction.message)
+                        Text(pendingAction.message(tools: store.toolAvailability))
                             .foregroundStyle(.secondary)
-                        if let command = pendingAction.commandPreview(packageName: packageRecord.name) {
+                        if let command = pendingAction.commandPreview(packageName: packageRecord.name, tools: store.toolAvailability) {
                             Text(command)
                                 .font(.caption.monospaced())
                                 .textSelection(.enabled)
@@ -1201,15 +1203,34 @@ enum PackageAction: String, Identifiable {
     var confirmationTitle: String {
         switch self {
         case .atsScan: return "Confirm ATS Scan"
-        case .exportArtifacts: return "Export Artifacts"
+        case .exportArtifacts: return "Confirm Export"
         case .syncToVault: return "Sync to Vault"
         }
     }
 
-    var isEnabled: Bool {
+    func availability(_ tools: ToolAvailabilityReport?) -> (enabled: Bool, reason: String?) {
         switch self {
-        case .atsScan: return true
-        case .exportArtifacts, .syncToVault: return false
+        case .atsScan:
+            return (true, nil)
+        case .syncToVault:
+            return (false, message(tools: tools))
+        case .exportArtifacts:
+            guard let tools, !tools.tools.isEmpty else { return (true, nil) }
+            guard let exportTool = tools.tools.first(where: { $0.tool == .exportTool }) else { return (true, nil) }
+            if exportTool.state == .found { return (true, nil) }
+            if exportTool.state == .builtIn {
+                let ready = [ExternalTool.pandoc, .pdftotext, .chrome].allSatisfy { tool in
+                    tools.tools.first(where: { $0.tool == tool })?.state == .found
+                }
+                if !ready {
+                    return (false, "Export needs Pandoc, pdftotext, and Google Chrome. See Settings > External Tools.")
+                }
+                return (true, nil)
+            }
+            if exportTool.state == .overrideInvalid {
+                return (false, "NAV_CENTER_EXPORT_BIN does not point to an executable file. See Settings > External Tools.")
+            }
+            return (true, nil)
         }
     }
 
@@ -1225,23 +1246,31 @@ enum PackageAction: String, Identifiable {
         self == .atsScan
     }
 
-    var message: String {
+    func message(tools: ToolAvailabilityReport?) -> String {
         switch self {
         case .atsScan:
             return "Runs a local package scan and refreshes the package ATS report."
         case .exportArtifacts:
-            return "Reserved for a later confirmed export workflow."
+            if tools?.tools.first(where: { $0.tool == .exportTool })?.state == .found {
+                return "Runs the exporter set in NAV_CENTER_EXPORT_BIN on this package's resume. Nav Center validates the refreshed PDF; the exporter must honor NAV_CENTER_SKIP_VAULT_SYNC=1."
+            }
+            return "Exports this package's resume to HTML, DOCX, PDF, and text extractions in artifacts/ using Pandoc, Google Chrome, and pdftotext. Vault sync is skipped."
         case .syncToVault:
             return "Reserved for a later confirmed vault sync workflow."
         }
     }
 
-    func commandPreview(packageName: String) -> String? {
+    func commandPreview(packageName: String, tools: ToolAvailabilityReport?) -> String? {
         switch self {
         case .atsScan:
             let packagePath = "applications/\(packageName)"
             return "atsim scan \(packagePath) --out \(packagePath)/artifacts/ats-report.json"
-        case .exportArtifacts, .syncToVault:
+        case .exportArtifacts:
+            if tools?.tools.first(where: { $0.tool == .exportTool })?.state == .found {
+                return "NAV_CENTER_SKIP_VAULT_SYNC=1 $NAV_CENTER_EXPORT_BIN export applications/\(packageName)/Resume_\(packageName).md"
+            }
+            return "NAV_CENTER_SKIP_VAULT_SYNC=1 native-export export applications/\(packageName)/Resume_\(packageName).md"
+        case .syncToVault:
             return nil
         }
     }
