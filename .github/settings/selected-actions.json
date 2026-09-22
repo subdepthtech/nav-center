@@ -1,5 +1,9 @@
 {
   "github_owned_allowed": true,
   "verified_allowed": false,
-  "patterns_allowed": ["SonarSource/sonarqube-scan-action@*"]
+  "patterns_allowed": [
+    "SonarSource/sonarqube-scan-action@*",
+    "anthropics/claude-code-action@*",
+    "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6"
+  ]
 }
