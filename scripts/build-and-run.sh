@@ -8,7 +8,7 @@ case "$MODE" in
 esac
 [[ $# -le 1 ]] || { echo "Expected at most one mode." >&2; exit 2; }
 
-VERSION="${NAV_CENTER_VERSION:-0.1.0-beta}"
+VERSION="${NAV_CENTER_VERSION:-0.1.0-beta.1}"
 BUILD_NUMBER="${NAV_CENTER_BUILD:-1}"
 CONFIGURATION="${NAV_CENTER_BUILD_CONFIGURATION:-debug}"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9]+([.-][A-Za-z0-9]+)*)?$ ]] || { echo "Invalid NAV_CENTER_VERSION." >&2; exit 2; }

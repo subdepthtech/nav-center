@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-beta.1 (unreleased)
 
+- Ship LICENSE and third-party notices in the app bundle and DMG; distribution builds refuse an unconfirmed notice.
+- Name the missing tool, its environment variable and an install hint when atsim, the export tools, Ruby or Codex are unavailable; `navcenterctl doctor` and Settings show every external tool; feedback diagnostics are redacted by default.
+- Cleanup review lists every package before removal and refuses trackers with custom triggers before moving anything.
+- Release verification checks the mounted app, notices and version strings; the Homebrew cask is generated only from accepted notarization evidence.
 - Extracted Nav Center into a standalone SwiftPM macOS app source tree.
 - Added public release scaffolding, CI, security guidance, and synthetic sample workspace data.
 - Fixed child-process signalling so a reaped process-group leader is never signalled again, while descendant cleanup, cooperative cancellation and bounded timeouts are preserved.

@@ -1,4 +1,5 @@
 {
+  "app_version": "0.1.0-beta.1",
   "xcode": "26.3",
   "swift": "6.2.3",
   "runner": "macos-15",
