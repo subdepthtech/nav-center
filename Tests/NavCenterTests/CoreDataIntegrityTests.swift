@@ -52,6 +52,68 @@ final class CoreDataIntegrityTests: XCTestCase {
         XCTAssertEqual(try TrackerStore(repoRoot: root).loadRows().count, 1)
     }
 
+    func testStatusChangeRefusesTrackerIDCollisionWithoutMutatingSibling() throws {
+        let first = "2099-01-01_A-B_Role"
+        let second = "2099-01-01_A_B_Role"
+        try makePackage(first)
+        try makePackage(second)
+        _ = try status(.submitted, packageName: first)
+
+        XCTAssertThrowsError(try status(.interview, packageName: second)) { error in
+            XCTAssertTrue(error.localizedDescription.contains(first), error.localizedDescription)
+        }
+
+        let rows = try TrackerStore(repoRoot: root).loadRows()
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.applicationDir, "applications/" + first)
+        XCTAssertEqual(rows.first?.status, "Submitted")
+        XCTAssertEqual(try TrackerStore.queryRows(repoRoot: root, dbPath: database, sql: "select * from status_events;").count, 1)
+    }
+
+    func testStatusChangeBindsExistingRowByApplicationDirectoryNotID() throws {
+        _ = try status()
+        let legacyPackage = "2020-02-02_Legacy_Engineer"
+        try makePackage(legacyPackage)
+        try SQLiteSupport.run(dbPath: database, repoRoot: root, sql: "INSERT INTO applications (id, application_dir, status) VALUES ('legacy', 'applications/\(legacyPackage)', 'Submitted');")
+
+        let result = try status(.interview, packageName: legacyPackage)
+
+        XCTAssertEqual(result.applicationID, "legacy")
+        let rows = try TrackerStore(repoRoot: root).loadRows().filter { $0.applicationDir == "applications/" + legacyPackage }
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.id, "legacy")
+        XCTAssertEqual(rows.first?.status, "Interview")
+    }
+
+    func testStatusChangeRefusesDuplicateApplicationDirectoryRows() throws {
+        _ = try status()
+        try SQLiteSupport.run(dbPath: database, repoRoot: root, sql: "INSERT INTO applications (id, application_dir, status) VALUES ('duplicate', 'applications/\(packageName)', 'Not Pursuing');")
+
+        XCTAssertThrowsError(try status(.interview))
+
+        let rows = try TrackerStore(repoRoot: root).loadRows()
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows.first(where: { $0.id == "2020_01_01_example_engineer" })?.status, "Submitted")
+        XCTAssertEqual(rows.first(where: { $0.id == "duplicate" })?.status, "Not Pursuing")
+        XCTAssertEqual(try TrackerStore.queryRows(repoRoot: root, dbPath: database, sql: "select * from status_events;").count, 1)
+    }
+
+    func testStatusChangeCollisionWithDirectorylessRowNamesMissingDirectory() throws {
+        _ = try status()
+        let orphanPackage = "2020-03-03_Orphan_Engineer"
+        try makePackage(orphanPackage)
+        try SQLiteSupport.run(dbPath: database, repoRoot: root, sql: "INSERT INTO applications (id, application_dir, status) VALUES ('2020_03_03_orphan_engineer', '', 'Submitted');")
+
+        XCTAssertThrowsError(try status(.interview, packageName: orphanPackage)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("no application directory"), error.localizedDescription)
+        }
+
+        let rows = try TrackerStore(repoRoot: root).loadRows()
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows.first(where: { $0.id == "2020_03_03_orphan_engineer" })?.status, "Submitted")
+        XCTAssertEqual(try TrackerStore.queryRows(repoRoot: root, dbPath: database, sql: "select * from status_events;").count, 1)
+    }
+
     func testStatusEventFailureRollsBackStatus() throws {
         _ = try status()
         try SQLiteSupport.run(dbPath: database, repoRoot: root, sql: "CREATE TRIGGER refuse_event BEFORE INSERT ON status_events BEGIN SELECT RAISE(ABORT, 'fixture event failure'); END;")
