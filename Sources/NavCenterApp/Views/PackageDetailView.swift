@@ -166,7 +166,7 @@ private struct PackageTabs: View {
     var body: some View {
         let tabSelection = Binding(
             get: { store.activePackageTabKey },
-            set: { tabKey in Task { await store.loadTab(tabKey) } }
+            set: { tabKey in store.selectTab(tabKey) }
         )
 
         VStack(alignment: .leading, spacing: 10) {

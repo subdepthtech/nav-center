@@ -12,7 +12,6 @@ protocol DashboardServicing: AnyObject, Sendable {
     func fetchSummary() throws -> DashboardSummary
     func fetchApplications(limit: Int) throws -> ApplicationsResponse
     func fetchPackage(named packageName: String) throws -> PackageResponse
-    func fetchTab(packageName: String, tabKey: String, file: String?) throws -> PackageTabPreviewResponse
     func fetchFilePreview(packageName: String, file: String) throws -> PackageFilePreviewResponse
     func fetchActions(packageName: String, limit: Int) -> ActionLogResponse
     func runAction(packageName: String, actionKey: String, confirmed: Bool) throws -> ActionResultResponse
@@ -51,7 +50,6 @@ final class DashboardStore: ObservableObject {
     @Published var summary: DashboardSummary?
     @Published var applications: [ApplicationRecord] = []
     @Published var selectedPackage: PackageResponse?
-    @Published var selectedTabPreview: PackageTabPreviewResponse?
     @Published var filePreviewCache: [String: PackageFilePreviewResponse] = [:]
     @Published var filePreviewLoading: Set<String> = []
     @Published var filePreviewErrors: [String: String] = [:]
@@ -104,7 +102,6 @@ final class DashboardStore: ObservableObject {
     private let codexQueue = DispatchQueue(label: "nav-center.codex-services", qos: .userInitiated)
     private var selectionRevision = UUID()
     private var refreshRevision = UUID()
-    private var tabRevision = UUID()
     private var loadingCount = 0
 
     init() {
@@ -224,9 +221,8 @@ final class DashboardStore: ObservableObject {
             invalidatePreviews()
             if let tab = selectedPackage?.package.tabs.first(where: { $0.key == PackageTabKey.review.rawValue && $0.available })
                 ?? selectedPackage?.package.tabs.first(where: { $0.available }) {
-                activePackageTabKey = tab.key
-                await loadTab(tab.key)
-            } else { selectedTabPreview = nil }
+                selectTab(tab.key)
+            }
         } catch is CancellationError {}
         catch { if selectionRevision == revision { errorMessage = error.localizedDescription } }
     }
@@ -251,18 +247,8 @@ final class DashboardStore: ObservableObject {
         catch { if previewRevision == revision, selectionRevision == selection { filePreviewErrors[file.relativePath] = error.localizedDescription } }
     }
 
-    func loadTab(_ tabKey: String, file: PackageFile? = nil) async {
-        guard let packageName = selectedPackage?.package.name else { return }
-        let selection = selectionRevision
-        let revision = UUID()
-        tabRevision = revision
+    func selectTab(_ tabKey: String) {
         activePackageTabKey = tabKey
-        do {
-            let preview = try await background { try $0.fetchTab(packageName: packageName, tabKey: tabKey, file: file?.relativePath) }
-            guard selectionRevision == selection, tabRevision == revision, !Task.isCancelled else { return }
-            selectedTabPreview = preview
-        } catch is CancellationError {}
-        catch { if selectionRevision == selection, tabRevision == revision { errorMessage = error.localizedDescription } }
     }
 
     func runConfirmedAction(_ actionKey: String, packageName confirmedPackage: String? = nil) async {
@@ -276,7 +262,7 @@ final class DashboardStore: ObservableObject {
             try await refreshPackageIfCurrent(packageName, revision: revision)
             if !result.ok, selectedPackage?.package.name == packageName, selectionRevision == revision { errorMessage = result.action.message }
             if actionKey == "ats-scan", selectedPackage?.package.name == packageName, selectionRevision == revision {
-                await loadTab(PackageTabKey.ats.rawValue)
+                selectTab(PackageTabKey.ats.rawValue)
             }
         } catch {
             if selectedPackage?.package.name == packageName, selectionRevision == revision { errorMessage = error.localizedDescription }
@@ -445,7 +431,7 @@ final class DashboardStore: ObservableObject {
             interviewKitMessage = response.wroteFiles
                 ? "Realtime kit ready: \(response.outputPaths.joined(separator: ", "))"
                 : "Realtime kit is already current."
-            await loadTab(PackageTabKey.interviewPrep.rawValue)
+            selectTab(PackageTabKey.interviewPrep.rawValue)
         } catch {
             if selectedPackage?.package.name == packageName, selectionRevision == revision {
                 interviewKitMessage = error.localizedDescription
@@ -562,7 +548,6 @@ final class DashboardStore: ObservableObject {
         saveActiveCodexConversation()
         selectionRevision = UUID()
         selectedPackage = nil
-        selectedTabPreview = nil
         filePreviewCache = [:]
         filePreviewLoading = []
         filePreviewErrors = [:]

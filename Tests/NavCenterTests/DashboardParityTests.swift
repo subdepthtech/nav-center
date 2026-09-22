@@ -89,18 +89,11 @@ final class DashboardParityTests: XCTestCase {
             statusEvents: [],
             sources: dashboardSources()
         )
-        store.selectedTabPreview = PackageTabPreviewResponse(
-            packageName: "2026-05-13_Example_Security_Engineer",
-            tab: tab,
-            file: nil,
-            content: "Preview"
-        )
         store.activePackageTabKey = PackageTabKey.interviewPrep.rawValue
 
         store.leavePackageDetailForSidebarNavigation()
 
         XCTAssertNil(store.selectedPackage)
-        XCTAssertNil(store.selectedTabPreview)
         XCTAssertEqual(store.activePackageTabKey, PackageTabKey.review.rawValue)
     }
 
@@ -375,15 +368,6 @@ private final class IntakeDashboardService: DashboardServicing, @unchecked Senda
         )
     }
 
-    func fetchTab(packageName: String, tabKey: String, file: String?) throws -> PackageTabPreviewResponse {
-        PackageTabPreviewResponse(
-            packageName: packageName,
-            tab: PackageTab(key: tabKey, label: "Posting", available: true, fileCount: 0, primaryFile: nil, files: []),
-            file: nil,
-            content: nil
-        )
-    }
-
     func fetchFilePreview(packageName: String, file: String) throws -> PackageFilePreviewResponse {
         throw DashboardAPIError.serverUnavailable("not used")
     }
@@ -474,9 +458,6 @@ private final class ToolReportingDashboardService: DashboardServicing, @unchecke
     func fetchSummary() throws -> DashboardSummary { try base.fetchSummary() }
     func fetchApplications(limit: Int) throws -> ApplicationsResponse { try base.fetchApplications(limit: limit) }
     func fetchPackage(named packageName: String) throws -> PackageResponse { try base.fetchPackage(named: packageName) }
-    func fetchTab(packageName: String, tabKey: String, file: String?) throws -> PackageTabPreviewResponse {
-        try base.fetchTab(packageName: packageName, tabKey: tabKey, file: file)
-    }
     func fetchFilePreview(packageName: String, file: String) throws -> PackageFilePreviewResponse {
         try base.fetchFilePreview(packageName: packageName, file: file)
     }
@@ -599,10 +580,6 @@ private final class CleanupRefreshService: DashboardServicing, @unchecked Sendab
     }
 
     func fetchPackage(named packageName: String) throws -> PackageResponse {
-        throw DashboardAPIError.serverUnavailable("not used")
-    }
-
-    func fetchTab(packageName: String, tabKey: String, file: String?) throws -> PackageTabPreviewResponse {
         throw DashboardAPIError.serverUnavailable("not used")
     }
 

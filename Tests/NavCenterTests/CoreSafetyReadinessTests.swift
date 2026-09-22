@@ -350,4 +350,53 @@ final class CoreSafetyReadinessTests: XCTestCase {
         XCTAssertEqual(atsim.summary, "Found via NAV_CENTER_ATSIM_BIN (path hidden in redacted output)")
         XCTAssertFalse(json.contains(root.lastPathComponent))
     }
+
+    func testOversizedPostingIsExcludedWithLimitMessageAndOtherPackagesStillScan() throws {
+        let root = try fixture()
+        _ = try WorkspaceManager(workspaceRoot: root).initialize()
+        let healthyName = "2026-01-01_Healthy_Package"
+        let oversizedName = "2026-01-02_Oversized_Posting"
+        let healthy = root.appendingPathComponent("applications/\(healthyName)")
+        let oversized = root.appendingPathComponent("applications/\(oversizedName)")
+        try FileManager.default.createDirectory(at: healthy, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: oversized, withIntermediateDirectories: true)
+        try Data("# Synthetic posting\n".utf8).write(to: healthy.appendingPathComponent("posting.md"))
+        try Data(count: 1_048_577).write(to: oversized.appendingPathComponent("posting.md"))
+
+        let result = try PackageInspector(repoRoot: root).scanWithWarnings()
+
+        XCTAssertEqual(result.packages.map(\.name), [healthyName])
+        XCTAssertTrue(result.warnings.contains { $0.contains("was excluded") && $0.contains("1048576") }, result.warnings.joined(separator: "\n"))
+    }
+
+    func testInvalidUTF8PostingIsExcludedWithEncodingMessage() throws {
+        let root = try fixture()
+        _ = try WorkspaceManager(workspaceRoot: root).initialize()
+        let name = "2026-01-03_Invalid_Posting"
+        let package = root.appendingPathComponent("applications/\(name)")
+        try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+        try Data([0xFF, 0xFE, 0x00]).write(to: package.appendingPathComponent("posting.md"))
+
+        let result = try PackageInspector(repoRoot: root).scanWithWarnings()
+
+        XCTAssertFalse(result.packages.contains { $0.name == name })
+        XCTAssertTrue(result.warnings.contains { $0.contains("is not valid UTF-8") }, result.warnings.joined(separator: "\n"))
+    }
+
+    func testOversizedInterviewSourcesAreRejectedBeforeKitIsWritten() throws {
+        let root = try fixture()
+        _ = try WorkspaceManager(workspaceRoot: root).initialize()
+        let name = "2026-01-04_Interview_Package"
+        let package = root.appendingPathComponent("applications/\(name)")
+        try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+        try Data("---\ncompany: Synthetic\nrole: Engineer\n---\nResponsibilities and requirements.\n".utf8).write(to: package.appendingPathComponent("posting.md"))
+        try Data(count: 1_048_577).write(to: package.appendingPathComponent("interview-prep.md"))
+
+        XCTAssertThrowsError(try RealtimeInterviewKitGenerator(repoRoot: root).create(applicationPath: "applications/\(name)", dryRun: false, overwrite: false)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("1048576"), error.localizedDescription)
+        }
+        for file in ["interview-realtime-session.json", "interview-transcript.md", "interview-review-prompt.md"] {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: package.appendingPathComponent(file).path), file)
+        }
+    }
 }

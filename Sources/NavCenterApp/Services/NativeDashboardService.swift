@@ -94,31 +94,17 @@ final class NativeDashboardService: @unchecked Sendable {
         )
     }
 
-    func fetchTab(packageName: String, tabKey: String, file: String? = nil) throws -> PackageTabPreviewResponse {
-        let package = try fetchPackage(named: packageName).package
-        guard let tab = package.tabs.first(where: { $0.key == tabKey }) else {
-            throw DashboardAPIError.serverUnavailable("Package tab not found: \(tabKey)")
-        }
-        let targetFile = file.flatMap { path in tab.files.first { $0.relativePath == path } } ?? tab.primaryFile
-        let content = try targetFile.flatMap { try fetchFilePreview(packageName: packageName, file: $0.relativePath).content }
-        return PackageTabPreviewResponse(
-            packageName: packageName,
-            tab: tab,
-            file: targetFile.map { previewFile(packageName: packageName, file: $0) },
-            content: content
-        )
-    }
-
     func fetchFilePreview(packageName: String, file: String) throws -> PackageFilePreviewResponse {
         let package = try fetchPackage(named: packageName).package
         guard let packageFile = package.files.first(where: { $0.relativePath == file }), packageFile.previewable else {
             throw DashboardAPIError.serverUnavailable("File preview is not available: \(file)")
         }
         let fileURL = try localFileURL(packageName: packageName, relativePath: file)
-        try PathSafety.assertExistingRegularFile(fileURL, inside: PathSafety.applicationsRoot(repoRoot: repoRoot).appendingPathComponent(packageName), label: "Package preview")
+        let packageDirectory = PathSafety.applicationsRoot(repoRoot: repoRoot).appendingPathComponent(packageName)
+        try PathSafety.assertExistingRegularFile(fileURL, inside: packageDirectory, label: "Package preview")
         return PackageFilePreviewResponse(
             file: previewFile(packageName: packageName, file: packageFile),
-            content: try String(contentsOf: fileURL)
+            content: try PathSafety.readUTF8(fileURL, inside: packageDirectory, label: "Package preview", maxBytes: 4 * 1024 * 1024)
         )
     }
 

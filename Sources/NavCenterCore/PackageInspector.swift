@@ -75,7 +75,7 @@ public final class PackageInspector {
         let metadata: [String: String]
         if FileManager.default.fileExists(atPath: posting.path) {
             try PathSafety.assertExistingRegularFile(posting, inside: resolved.packageURL, label: "posting.md")
-            metadata = Markdown.parseFrontmatter(try String(contentsOf: posting)).metadata
+            metadata = Markdown.parseFrontmatter(try PathSafety.readUTF8(posting, inside: resolved.packageURL, label: "posting.md", maxBytes: 1_048_576)).metadata
         } else {
             metadata = [:]
         }

@@ -70,4 +70,17 @@ final class CreatorReadinessTests: XCTestCase {
         XCTAssertTrue(try String(contentsOf: result.postingURL).contains("Experience building synthetic systems"))
         XCTAssertEqual(try String(contentsOf: hitsFile), "/redirect\n/positive\n")
     }
+
+    func testOversizedPayloadIsRejected() throws {
+        let root = try fixture()
+        try Data(count: 4_194_305).write(to: root.appendingPathComponent("payload.json"))
+        let creator = ApplicationCreator(repoRoot: root)
+
+        XCTAssertThrowsError(try creator.create(options: options(.payload("payload.json")))) { error in
+            XCTAssertTrue(error.localizedDescription.contains("4194304"), error.localizedDescription)
+        }
+        let applications = root.appendingPathComponent("applications")
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: applications.path)) ?? []
+        XCTAssertTrue(names.isEmpty, names.joined(separator: ", "))
+    }
 }

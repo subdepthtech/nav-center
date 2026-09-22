@@ -159,6 +159,40 @@ final class WorkspaceFeatureTests: XCTestCase {
         XCTAssertEqual(raw.recentLogs, [line])
     }
 
+    func testFeedbackDiagnosticsTruncatesOversizedLogsSafely() throws {
+        let temp = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: temp) }
+        let home = temp.appendingPathComponent("Users/synthetic", isDirectory: true).standardizedFileURL
+        let workspace = home.appendingPathComponent("Workspace", isDirectory: true)
+        try WorkspaceManager(workspaceRoot: workspace).initialize()
+        let logs = workspace.appendingPathComponent("logs", isDirectory: true)
+        let head = "SMALL-LOG-HEAD-MUST-NOT-APPEAR-"
+        let tail = "SMALL-LOG-TAIL-MARKER"
+        let small = head + String(repeating: "a", count: 2_500) + tail
+        try small.write(to: logs.appendingPathComponent("small.log"), atomically: true, encoding: .utf8)
+        let oversizeMarker = Data("OVERSIZE-LOG-MARKER".utf8)
+        var oversized = Data(count: 1_048_577 - oversizeMarker.count)
+        oversized.append(oversizeMarker)
+        try oversized.write(to: logs.appendingPathComponent("oversized.log"))
+        let diagnostics = FeedbackDiagnostics(
+            workspaceRoot: workspace,
+            homeDirectory: home,
+            appVersion: "0.1.0-beta",
+            toolProbe: ToolProbeConfiguration(environment: ["PATH": ""], homeDirectory: home, fallbackDirectories: [], isExecutableRegularFile: { _ in false })
+        )
+
+        let raw = diagnostics.report(redact: false)
+        let redacted = diagnostics.report(redact: true)
+
+        XCTAssertEqual(raw.recentLogs.count, 1)
+        let included = try XCTUnwrap(raw.recentLogs.first)
+        XCTAssertLessThanOrEqual(included.count, 2_000)
+        XCTAssertTrue(included.contains(tail))
+        XCTAssertFalse(included.contains(head))
+        XCTAssertFalse(included.contains("OVERSIZE-LOG-MARKER"))
+        XCTAssertEqual(redacted.recentLogs, [])
+    }
+
     private func makeTempDirectory() throws -> URL {
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("nav-center-tests-\(UUID().uuidString)", isDirectory: true)

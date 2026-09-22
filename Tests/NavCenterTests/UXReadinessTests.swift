@@ -662,6 +662,20 @@ final class UXReadinessTests: XCTestCase {
         XCTAssertTrue(rows[1].accessibilityLabel.contains("dated \(packageOnly.packageDate)"))
     }
 
+    func testOversizedPreviewFileReportsLimitInsteadOfLoading() throws {
+        let root = try workspace()
+        let service = NativeDashboardService(repoRoot: root)
+        _ = try service.fetchSummary()
+        let name = "2099-01-01_Synthetic_Engineer"
+        try package(name, in: root)
+        let preview = root.appendingPathComponent("applications/\(name)/interview-prep.md")
+        try Data(count: 4 * 1024 * 1024 + 1).write(to: preview)
+
+        XCTAssertThrowsError(try service.fetchFilePreview(packageName: name, file: "interview-prep.md")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("4194304"), error.localizedDescription)
+        }
+    }
+
     private func workspace() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("nav-center-ux-tests-" + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
@@ -803,15 +817,6 @@ private final class UXTestService: DashboardServicing, @unchecked Sendable {
             application: nil,
             statusEvents: [],
             sources: Self.sources()
-        )
-    }
-
-    func fetchTab(packageName: String, tabKey: String, file: String?) throws -> PackageTabPreviewResponse {
-        PackageTabPreviewResponse(
-            packageName: packageName,
-            tab: PackageTab(key: tabKey, label: "Posting", available: true, fileCount: 0, primaryFile: nil, files: []),
-            file: nil,
-            content: nil
         )
     }
 
