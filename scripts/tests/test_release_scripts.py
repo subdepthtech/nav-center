@@ -397,7 +397,13 @@ class ReleaseScriptsTests(unittest.TestCase):
             self.assert_ok(self.run_script(
                 "update-homebrew-cask.sh", "9.8.7-beta.2", url, "a" * 64, architecture, str(path), str(notary),
             ))
-            self.assertIn(f"depends_on arch: :{architecture}", path.read_text())
+            text = path.read_text()
+            self.assertIn(f"depends_on arch: :{architecture}", text)
+            self.assertIn(
+                'caveats "Nav Center #{version} is Developer ID signed, notarized by Apple, and stapled."',
+                text,
+            )
+            self.assertNotIn("arm64 only", text)
             syntax = subprocess.run(["/usr/bin/ruby", "-c", str(path)], capture_output=True, text=True)
             self.assert_ok(syntax)
         self.assertEqual(self.events(), [])
@@ -423,7 +429,7 @@ class ReleaseScriptsTests(unittest.TestCase):
         ))
         text = path.read_text()
         self.assertIn(
-            'caveats "Nav Center #{version} is Developer ID signed, notarized by Apple, and stapled. Beta: arm64 only."',
+            'caveats "Nav Center #{version} is Developer ID signed, notarized by Apple, and stapled."',
             text,
         )
         self.assertIn('"~/Library/Application Support/Nav Center"', text)
@@ -663,11 +669,14 @@ class ReleaseScriptsTests(unittest.TestCase):
         app_version = versions["app_version"]
         plugin = json.loads((REPO / "plugins/nav-center/.codex-plugin/plugin.json").read_text())
         self.assertEqual(plugin["version"], app_version)
-        build_script = (REPO / "scripts/build-and-run.sh").read_text()
-        self.assertIn(f'VERSION="${{NAV_CENTER_VERSION:-{app_version}}}"', build_script)
+        version_default = re.compile(r'^VERSION="\$\{NAV_CENTER_VERSION:-([^}]+)\}"', re.MULTILINE)
+        for script_name in ("scripts/build-and-run.sh", "scripts/package-beta-dmg.sh"):
+            match = version_default.search((REPO / script_name).read_text())
+            self.assertIsNotNone(match, script_name)
+            self.assertEqual(match.group(1), app_version)
         changelog = (REPO / "CHANGELOG.md").read_text().splitlines()
         headings = [line for line in changelog if line.startswith("## ")]
-        self.assertTrue(headings[0].startswith(f"## {app_version}"))
+        self.assertRegex(headings[0], rf"^## {re.escape(app_version)}(\s|$)")
 
 
 class VendorNoticeTests(unittest.TestCase):

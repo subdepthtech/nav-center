@@ -85,7 +85,7 @@ Feedback drafts should not include private resume content, exact private file pa
 
 1. Quit Nav Center.
 2. Move `/Applications/Nav Center.app` to Trash.
-3. Optional data removal. The workspace directory is `~/Library/Application Support/Nav Center`:
+3. Optional data removal. `~/Library/Application Support/Nav Center` is the app support directory; it contains the workspace at `…/Nav Center/Workspace`.
 
 ```sh
 rm -rf "$HOME/Library/Application Support/Nav Center"

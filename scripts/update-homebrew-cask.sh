@@ -54,7 +54,7 @@ cask "nav-center" do
   app "Nav Center.app"
   binary "#{appdir}/Nav Center.app/Contents/MacOS/navcenterctl"
 
-  caveats "Nav Center #{version} is Developer ID signed, notarized by Apple, and stapled. Beta: arm64 only."
+  caveats "Nav Center #{version} is Developer ID signed, notarized by Apple, and stapled."
 
   zap trash: [
     "~/Library/Application Support/Nav Center",

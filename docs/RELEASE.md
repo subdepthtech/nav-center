@@ -72,7 +72,7 @@ scripts/update-homebrew-cask.sh \
   /path/to/NavCenter-0.1.0-beta.1-macos-arm64.dmg.notary.json
 ```
 
-The generator rejects malformed values, unsigned asset names, and mismatched version/architecture URLs. It also refuses, before writing, when the notary JSON is missing, is not JSON, or its `status` is not `Accepted`. An accepted result adds a caveat that the cask is Developer ID signed, notarized by Apple, and stapled, and that this beta is arm64 only. It declares the hardware requirement, installs the app and CLI, and removes the workspace directory plus AppKit window-state files only through explicit `brew uninstall --zap`. It only writes the requested cask; run `ruby -c <cask-file>` and, where already available, `brew style <cask-file>` separately. Tap publication and install/upgrade/uninstall validation require separate authorization.
+The generator rejects malformed values, unsigned asset names, and mismatched version/architecture URLs. It also refuses, before writing, when the notary JSON is missing, is not JSON, or its `status` is not `Accepted`. An accepted result adds a caveat that the cask is Developer ID signed, notarized by Apple, and stapled. The architecture is declared by `depends_on arch:`; this beta ships arm64 only. It declares the hardware requirement, installs the app and CLI, and removes the workspace directory plus AppKit window-state files only through explicit `brew uninstall --zap`. It only writes the requested cask; run `ruby -c <cask-file>` and, where already available, `brew style <cask-file>` separately. Tap publication and install/upgrade/uninstall validation require separate authorization.
 
 ## Beta release runbook (maintainer, explicit authorization per step)
 
