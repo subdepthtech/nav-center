@@ -39,6 +39,7 @@ struct NavCenterCLI {
                 print("Workspace: \(report.workspace.path)")
                 print("Missing directories: \(report.workspace.requiredDirectoriesMissing.joined(separator: ", ").nonEmptyFallback("none"))")
                 print("Packages: \(report.workspace.applicationPackageCount)")
+                printToolTable(report.tools)
             }
         case "import-docs":
             let files = parser.repeatedOption("--file").map { URL(fileURLWithPath: $0) }
@@ -48,8 +49,9 @@ struct NavCenterCLI {
             let imported = try DocumentImporter(workspaceRoot: workspace).importDocuments(files)
             try writeJSON(imported)
         case "feedback-diagnostics":
-            let redact = parser.flag("--redact")
-            let report = FeedbackDiagnostics(workspaceRoot: workspace).report(redact: redact)
+            let includeUnredacted = parser.flag("--include-unredacted")
+            let explicitRedact = parser.flag("--redact")
+            let report = FeedbackDiagnostics(workspaceRoot: workspace).report(redact: explicitRedact || !includeUnredacted)
             try writeJSON(report)
         case "restore-cleanup":
             let path = try parser.requiredOption("--manifest")
@@ -111,7 +113,7 @@ struct NavCenterCLI {
             navcenterctl import-docs --file <path> [--file <path>] [--workspace <path>]
             navcenterctl create-package --company <name> --role <title> --posting <path> [--date YYYY-MM-DD] [--overwrite] [--dry-run] [--workspace <path>]
             navcenterctl export-artifacts --source <markdown> [--source <markdown>] [--workspace <path>]
-            navcenterctl feedback-diagnostics [--redact] [--workspace <path>]
+            navcenterctl feedback-diagnostics [--redact] [--include-unredacted] [--workspace <path>]
             navcenterctl restore-cleanup --manifest <path> --confirm [--workspace <path>]
             """
         )
@@ -133,7 +135,7 @@ private struct ArgumentParser {
             "init-workspace": (["--workspace"], [], []),
             "doctor": (["--workspace"], ["--json"], []),
             "import-docs": (["--workspace", "--file"], [], ["--file"]),
-            "feedback-diagnostics": (["--workspace"], ["--redact"], []),
+            "feedback-diagnostics": (["--workspace"], ["--redact", "--include-unredacted"], []),
             "restore-cleanup": (["--workspace", "--manifest"], ["--confirm"], []),
             "create-package": (["--workspace", "--company", "--role", "--posting", "--date"], ["--dry-run", "--overwrite"], []),
             "export-artifacts": (["--workspace", "--source"], [], ["--source"]),
@@ -202,6 +204,47 @@ private struct ArgumentParser {
         arguments.remove(at: optionIndex)
         if optionIndex < index { index = max(0, index - 1) }
         return true
+    }
+}
+
+private func printToolTable(_ report: ToolAvailabilityReport) {
+    print("Tools:")
+    for status in report.tools {
+        let variable = status.environmentVariable ?? "-"
+        print("\(status.tool.rawValue)\t\(doctorState(status))\t\(variable)\t\(doctorDetail(status))")
+    }
+    print(ToolProbe.finderPathNotice)
+}
+
+private func doctorState(_ status: ToolStatus) -> String {
+    switch status.state {
+    case .found:
+        let source: String
+        switch status.source {
+        case .environment: source = "environment"
+        case .path: source = "path"
+        case .fallback: source = "fallback"
+        case .defaultPath: source = "default"
+        case nil: source = "path"
+        }
+        return "found (\(source))"
+    case .missing:
+        return "missing"
+    case .overrideInvalid:
+        return "override-invalid"
+    case .builtIn:
+        return "built-in"
+    }
+}
+
+private func doctorDetail(_ status: ToolStatus) -> String {
+    switch status.state {
+    case .found:
+        return status.resolvedPath ?? status.summary
+    case .overrideInvalid:
+        return status.summary
+    case .missing, .builtIn:
+        return status.installHint
     }
 }
 

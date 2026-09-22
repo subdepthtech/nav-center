@@ -87,9 +87,12 @@ final class WorkspaceFeatureTests: XCTestCase {
         let report = FeedbackDiagnostics(
             workspaceRoot: workspace,
             homeDirectory: home,
-            appVersion: "0.1.0-beta"
+            appVersion: "0.1.0-beta",
+            toolProbe: ToolProbeConfiguration(environment: ["PATH": ""], homeDirectory: home, fallbackDirectories: [], isExecutableRegularFile: { _ in false })
         ).report(redact: true)
-        let json = String(data: try JSONEncoder().encode(report), encoding: .utf8) ?? ""
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        let json = String(data: try encoder.encode(report), encoding: .utf8) ?? ""
 
         XCTAssertEqual(report.appVersion, "0.1.0-beta")
         XCTAssertTrue(report.workspace.exists)
@@ -97,6 +100,63 @@ final class WorkspaceFeatureTests: XCTestCase {
         XCTAssertFalse(json.contains("/Users/tucker"))
         XCTAssertEqual(report.workspace.path, "<workspace>")
         XCTAssertTrue(report.recentLogs.isEmpty)
+    }
+
+    func testFeedbackDiagnosticsIncludesToolTableWithRedactedPaths() throws {
+        let temp = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: temp) }
+        let home = temp.appendingPathComponent("Users/synthetic", isDirectory: true)
+        let workspace = home.appendingPathComponent("Workspace", isDirectory: true)
+        try WorkspaceManager(workspaceRoot: workspace).initialize()
+        let pandoc = home.appendingPathComponent("bin/pandoc")
+        try FileManager.default.createDirectory(at: pandoc.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(to: pandoc)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: pandoc.path)
+        let probe = ToolProbeConfiguration(
+            environment: ["PATH": "", "PANDOC_BIN": pandoc.path],
+            homeDirectory: home,
+            fallbackDirectories: []
+        )
+
+        let report = FeedbackDiagnostics(workspaceRoot: workspace, homeDirectory: home, appVersion: "0.1.0-beta", toolProbe: probe).report(redact: true)
+
+        XCTAssertEqual(report.tools.tools.map(\.tool), ExternalTool.allCases)
+        let status = try XCTUnwrap(report.tools.tools.first { $0.tool == .pandoc })
+        XCTAssertEqual(status.state, .found)
+        XCTAssertEqual(status.source, .environment)
+        XCTAssertNil(status.resolvedPath)
+        XCTAssertEqual(status.summary, "Found via PANDOC_BIN (path hidden in redacted output)")
+        XCTAssertFalse(status.summary.contains(home.path))
+        XCTAssertFalse(status.summary.contains(pandoc.path))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        let json = String(decoding: try encoder.encode(report), as: UTF8.self)
+        XCTAssertFalse(json.contains(home.path))
+        XCTAssertFalse(json.contains("/Users/synthetic"))
+        XCTAssertFalse(json.contains(pandoc.path))
+    }
+
+    func testRedactedDiagnosticsOmitLogLinesAndUnredactedKeepsThem() throws {
+        let temp = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: temp) }
+        let home = temp.appendingPathComponent("Users/synthetic", isDirectory: true).standardizedFileURL
+        let workspace = home.appendingPathComponent("Workspace", isDirectory: true)
+        try WorkspaceManager(workspaceRoot: workspace).initialize()
+        try FileManager.default.createDirectory(at: workspace.appendingPathComponent("logs", isDirectory: true), withIntermediateDirectories: true)
+        let line = "Opened \(home.path)/secret.txt"
+        try line.write(to: workspace.appendingPathComponent("logs/nav-center.log"), atomically: true, encoding: .utf8)
+        let diagnostics = FeedbackDiagnostics(
+            workspaceRoot: workspace,
+            homeDirectory: home,
+            appVersion: "0.1.0-beta",
+            toolProbe: ToolProbeConfiguration(environment: ["PATH": ""], homeDirectory: home, fallbackDirectories: [], isExecutableRegularFile: { _ in false })
+        )
+
+        let redacted = diagnostics.report(redact: true)
+        let raw = diagnostics.report(redact: false)
+
+        XCTAssertEqual(redacted.recentLogs, [])
+        XCTAssertEqual(raw.recentLogs, [line])
     }
 
     private func makeTempDirectory() throws -> URL {

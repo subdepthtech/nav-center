@@ -52,6 +52,8 @@ NAVCENTERCTL="$(xcrun swift build --scratch-path "$nav_check_root/release" -c re
 
 [`NavCenterTests`](../Tests/NavCenterTests) covers workspace/data safety, SQLite updates and recovery, imports and export contracts, dashboard state, Codex protocol/staging, and synthetic process/network cases. Some tests create an ephemeral loopback HTTP listener; a sandbox that blocks it limits validation rather than proving a source defect. Building all products in the same scratch directory also supplies the sibling `navcenterctl` used by the native cleanup-restoration test.
 
+[`ToolProbeReadinessTests`](../Tests/NavCenterTests/ToolProbeReadinessTests.swift) checks override, PATH, and fallback resolution without executing a tool. Tests that assert `.missing` must inject `fallbackDirectories: []`; a tool installed in `/opt/homebrew/bin`, `/usr/local/bin`, or `~/.local/bin` on the machine running the tests would otherwise satisfy the lookup.
+
 [`scripts/tests/test_cli.py`](../scripts/tests/test_cli.py) skips without `NAVCENTERCTL`, so test discovery alone is not CLI validation. Run it explicitly against the built executable as above. [`test_release_scripts.py`](../scripts/tests/test_release_scripts.py) uses synthetic tools for compilation, signing, notarization and Gatekeeper behavior. These regressions validate script contracts, not Apple service acceptance or a usable signed artifact.
 
 Run the native sanitizer checks in separate build directories:

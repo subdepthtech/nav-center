@@ -9,12 +9,18 @@ final class NativeDashboardService: @unchecked Sendable {
 
     private let inspector: PackageInspector
     private let actionRunner: PackageActionRunner
+    private let environment: [String: String]
 
     init(repoRoot: URL? = nil, environment: [String: String] = ProcessInfo.processInfo.environment) {
         let root = repoRoot ?? WorkspaceManager.resolveWorkspaceRoot(environment: environment)
         self.repoRoot = root
+        self.environment = environment
         self.inspector = PackageInspector(repoRoot: root)
         self.actionRunner = PackageActionRunner(repoRoot: root, environment: environment)
+    }
+
+    func fetchToolAvailability() throws -> ToolAvailabilityReport {
+        ToolProbe.report(configuration: ToolProbeConfiguration(environment: environment))
     }
 
     func fetchSummary() throws -> DashboardSummary {

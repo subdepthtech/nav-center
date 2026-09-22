@@ -24,12 +24,14 @@ public final class PackageActionRunner {
 
     private let repoRoot: URL
     private let environment: [String: String]
+    private let toolProbe: ToolProbeConfiguration
     private var log: [PackageActionEntry] = []
     private var counter = 0
 
-    public init(repoRoot: URL, environment: [String: String] = ProcessInfo.processInfo.environment) {
+    public init(repoRoot: URL, environment: [String: String] = ProcessInfo.processInfo.environment, toolProbe: ToolProbeConfiguration? = nil) {
         self.repoRoot = repoRoot
         self.environment = environment
+        self.toolProbe = toolProbe ?? ToolProbeConfiguration(environment: environment)
     }
 
     public func actionLog(packageName: String? = nil, limit: Int = 20) -> [PackageActionEntry] {
@@ -61,7 +63,7 @@ public final class PackageActionRunner {
 
         guard confirmed else { return entry }
 
-        let command = try buildCommand(action: action, packageName: resolved.packageName)
+        var command = try buildCommand(action: action, packageName: resolved.packageName)
         entry.command = command.display
         entry.outputPath = command.outputPath
         entry.status = "running"
@@ -70,6 +72,19 @@ public final class PackageActionRunner {
         update(entry)
 
         let started = Date()
+        if commandHook == nil {
+            if let failure = unresolvedToolMessage(action: action, command: &command) {
+                entry.status = "failed"
+                entry.exitCode = nil
+                entry.message = failure
+                entry.completedAt = ISO8601DateFormatter().string(from: Date())
+                entry.durationMs = Int(Date().timeIntervalSince(started) * 1000)
+                update(entry)
+                return entry
+            }
+            entry.command = resolvedDisplay(command)
+            update(entry)
+        }
         do {
             if action == "ats-scan" {
                 let result = try runStagedATS(command, packageURL: resolved.packageURL, commandHook: commandHook) { result in
@@ -89,7 +104,7 @@ public final class PackageActionRunner {
                 let result: ProcessResult
                 if action == "refresh-resume", commandHook == nil, command.executable == "native-export" {
                     let source = "applications/\(resolved.packageName)/Resume_\(resolved.packageName).md"
-                    _ = try ArtifactExporter(repoRoot: repoRoot, environment: environment.merging(["NAV_CENTER_SKIP_VAULT_SYNC": "1"]) { _, value in value }).export(markdownPaths: [source])
+                    _ = try ArtifactExporter(repoRoot: repoRoot, environment: environment.merging(["NAV_CENTER_SKIP_VAULT_SYNC": "1"]) { _, value in value }, toolProbe: toolProbe).export(markdownPaths: [source])
                     result = ProcessResult(status: 0, stdout: "", stderr: "")
                 } else {
                     result = try (commandHook ?? ProcessRunner.run)(command.executable, command.args, repoRoot, command.environment)
@@ -122,11 +137,17 @@ public final class PackageActionRunner {
     }
 
     private struct BuiltCommand {
-        let executable: String
+        var executable: String
         let args: [String]
         let display: String
         let outputPath: String
         let environment: [String: String]
+    }
+
+    private func resolvedDisplay(_ command: BuiltCommand) -> String {
+        let invocation = ([command.executable] + command.args).joined(separator: " ")
+        guard command.environment["NAV_CENTER_SKIP_VAULT_SYNC"] == "1" else { return invocation }
+        return "NAV_CENTER_SKIP_VAULT_SYNC=1 \(invocation)"
     }
 
     private struct ATSFileSnapshot: Equatable {
@@ -323,9 +344,44 @@ public final class PackageActionRunner {
         }
     }
 
+    private func unresolvedToolMessage(action: String, command: inout BuiltCommand) -> String? {
+        let tool: ExternalTool = action == "ats-scan" ? .atsim : .exportTool
+        let actionName = action == "ats-scan" ? "ATS scan" : "Resume PDF refresh"
+        let resolved = ToolProbe.resolve(tool, configuration: toolProbe)
+        switch resolved.state {
+        case .found:
+            if let path = resolved.resolvedPath { command.executable = path }
+            return nil
+        case .builtIn where tool == .exportTool && command.executable == "native-export":
+            return nil
+        case .builtIn:
+            let variable = ExternalTool.exportTool.environmentVariable ?? "the override"
+            let invalid = ToolStatus(
+                tool: .exportTool,
+                state: .overrideInvalid,
+                resolvedPath: nil,
+                source: nil,
+                environmentVariable: ExternalTool.exportTool.environmentVariable,
+                installHint: ExternalTool.exportTool.installHint,
+                summary: "\(variable) is not an executable file"
+            )
+            return ToolProbe.missingToolMessage(invalid, action: actionName)
+        default:
+            return ToolProbe.missingToolMessage(resolved, action: actionName)
+        }
+    }
+
     private func actionMessage(action: String, status: String, exitCode: Int32) -> String {
         if status == "succeeded" {
             return action == "refresh-resume" ? "Resume PDF refreshed from source markdown." : "ATS scan completed and ats-report.json was refreshed."
+        }
+        if exitCode == 127 {
+            let tool: ExternalTool = action == "refresh-resume" ? .exportTool : .atsim
+            let actionName = action == "refresh-resume" ? "Resume PDF refresh" : "ATS scan"
+            let resolved = ToolProbe.resolve(tool, configuration: toolProbe)
+            if resolved.state == .missing || resolved.state == .overrideInvalid {
+                return ToolProbe.missingToolMessage(resolved, action: actionName)
+            }
         }
         return action == "refresh-resume" ? "Resume PDF refresh failed with exit code \(exitCode)." : "ATS scan failed with exit code \(exitCode)."
     }

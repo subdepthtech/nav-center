@@ -28,9 +28,11 @@ public struct MasterResumeSaveResult: Equatable {
 
 public final class MasterResumeStore {
     private let repoRoot: URL
+    private let toolProbe: ToolProbeConfiguration
 
-    public init(repoRoot: URL) {
+    public init(repoRoot: URL, toolProbe: ToolProbeConfiguration? = nil) {
         self.repoRoot = repoRoot.standardizedFileURL
+        self.toolProbe = toolProbe ?? ToolProbeConfiguration()
     }
 
     public func load() throws -> MasterResumeSnapshot {
@@ -47,6 +49,10 @@ public final class MasterResumeStore {
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw NavCenterError.invalidPath("Master resume content cannot be empty.")
         }
+        let rubyStatus = ToolProbe.resolve(.ruby, configuration: toolProbe)
+        guard rubyStatus.state == .found, let ruby = rubyStatus.resolvedPath else {
+            throw NavCenterError.invalidPath(ToolProbe.missingToolMessage(rubyStatus, action: "Master resume save"))
+        }
 
         let url = masterResumeURL
         try PathSafety.assertExistingRegularFile(url, inside: repoRoot, label: "master resume")
@@ -60,7 +66,7 @@ public final class MasterResumeStore {
         try PathSafety.assertWritablePath(candidate, inside: workDir, label: "master resume candidate")
         try PathSafety.atomicWrite(Data(content.utf8), to: candidate, inside: repoRoot, label: "master resume candidate")
         do {
-            try validateYAML(candidate)
+            try validateYAML(candidate, ruby: ruby)
         } catch {
             try? FileManager.default.removeItem(at: candidate)
             throw error
@@ -89,9 +95,9 @@ public final class MasterResumeStore {
         repoRoot.appendingPathComponent("master-resumes/master_primary.yaml")
     }
 
-    private func validateYAML(_ url: URL) throws {
+    private func validateYAML(_ url: URL, ruby: String) throws {
         let result = try ProcessRunner.run(
-            "ruby",
+            ruby,
             ["-e", Self.yamlValidator, url.path],
             cwd: repoRoot
         )

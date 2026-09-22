@@ -47,6 +47,8 @@ Use the Overview setup panel to import resumes, evaluations, education records, 
 
 Do not treat generated resume data as final until the imported Markdown and `master-resumes/master_primary.yaml` have been reviewed.
 
+Optional tools are reported in Settings, under External Tools. That table shows each tool's state, the environment variable that overrides it, and a short summary. The check does not run the tool. When an action needs a tool that is missing, the message names the tool and the variable. For example: "ATS scan needs atsim, which was not found on PATH or in /opt/homebrew/bin, /usr/local/bin, or ~/.local/bin. Set NAV_CENTER_ATSIM_BIN to its absolute path, or install atsim into an isolated Python environment and expose its launcher on PATH and reopen Nav Center."
+
 ## Codex Plugin Skills
 
 Install the `Nav Center` plugin from the Codex marketplace to make the beta helper skills available from this public repository. The plugin package lives at `plugins/nav-center` so marketplace installation only receives the skill files, not the full app source tree.
