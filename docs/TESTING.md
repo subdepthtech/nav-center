@@ -71,7 +71,7 @@ Retain a failed sanitizer result as a failure or a diagnosed platform/tool limit
 
 ## Explicit integration tests
 
-The standard Swift test run can skip real Chrome and installed ATS checks. Preserve the skip reasons in the test log and CI summary.
+The standard Swift test run can skip real Chrome, the installed export chain, and installed ATS checks. `scripts/tests/test_cli.py` skips its real export lane the same way. Preserve the skip reasons in the test log and CI summary.
 
 For an already installed Chrome at `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`:
 
@@ -82,7 +82,21 @@ NAV_CENTER_RENDERER_EVIDENCE_DIR="$nav_check_root/renderer-evidence" \
   --filter RendererReadinessTests.testInstalledChromeRendersStyledUnicodeDocumentWithPrivateProfile
 ```
 
-This test uses a synthetic document and a fresh Chrome profile, verifies PDF text, and can retain HTML/PDF/text/PNG evidence. It skips if Chrome is missing and does not install it. It does not exercise the complete Pandoc-to-DOCX/PDF-to-Poppler export chain. See [`RendererReadinessTests`](../Tests/NavCenterTests/RendererReadinessTests.swift).
+This test uses a synthetic document and a fresh Chrome profile, verifies PDF text, and can retain HTML/PDF/text/PNG evidence. With `NAV_CENTER_TEST_REAL_CHROME=1`, a missing Chrome fails the test. It skips when that variable is unset and does not install Chrome. It does not exercise the complete Pandoc-to-DOCX/PDF-to-Poppler export chain. See [`RendererReadinessTests`](../Tests/NavCenterTests/RendererReadinessTests.swift).
+
+For the complete built-in export chain (Pandoc, Google Chrome, and pdftotext) set `NAV_CENTER_TEST_REAL_EXPORT=1`. Both checks skip only when that variable is not `1`. When it is `1`, a missing tool or a failed export fails the test; neither check installs tools or reads the Application Support workspace.
+
+```bash
+NAV_CENTER_TEST_REAL_EXPORT=1 \
+  xcrun swift test --scratch-path "$nav_build_root" \
+  --filter ExportToolReadinessTests.testInstalledExportChainProducesCompleteArtifactSet
+
+NAV_CENTER_TEST_REAL_EXPORT=1 \
+NAVCENTERCTL="$(xcrun swift build --show-bin-path --scratch-path "$nav_build_root")/navcenterctl" \
+  python3 -B scripts/tests/test_cli.py -v
+```
+
+The Swift test resolves Pandoc, pdftotext, and Chrome with the default probe, exports one synthetic resume, and requires `Resume_*.html`, `.docx`, `.pdf`, `.docx.txt`, and `.pdf.txt`, with a PDF header and non-empty text extractions. The `test_cli.py` real lane runs `export-artifacts` with no tool overrides and the same five-file check, with a 120 second timeout. See [`ExportToolReadinessTests`](../Tests/NavCenterTests/ExportToolReadinessTests.swift).
 
 For a separately reviewed, installed ATS executable, substitute its absolute path:
 

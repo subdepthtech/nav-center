@@ -268,6 +268,9 @@ final class DashboardStore: ObservableObject {
             if actionKey == "ats-scan", selectedPackage?.package.name == packageName, selectionRevision == revision {
                 selectTab(PackageTabKey.ats.rawValue)
             }
+            if actionKey == "export-artifacts", result.ok, selectedPackage?.package.name == packageName, selectionRevision == revision {
+                selectTab(PackageTabKey.artifacts.rawValue)
+            }
         } catch {
             if selectedPackage?.package.name == packageName, selectionRevision == revision { errorMessage = error.localizedDescription }
         }

@@ -31,7 +31,8 @@ final class DashboardParityTests: XCTestCase {
         let actions = PackageAction.railActions
 
         XCTAssertEqual(actions.map(\.title), ["Run ATS Scan", "Export Artifacts", "Sync to Vault"])
-        XCTAssertEqual(actions.map(\.isEnabled), [true, false, false])
+        XCTAssertEqual(actions.map { $0.availability(nil).enabled }, [true, true, false])
+        XCTAssertEqual(actions.map { $0.availability(.empty).enabled }, [true, true, false])
         XCTAssertEqual(actions.first?.confirmationTitle, "Confirm ATS Scan")
         XCTAssertEqual(
             actions.first?.message,
@@ -41,6 +42,112 @@ final class DashboardParityTests: XCTestCase {
             actions.first?.commandPreview(packageName: "2026-05-05_Example_Security_Engineer"),
             "atsim scan applications/2026-05-05_Example_Security_Engineer --out applications/2026-05-05_Example_Security_Engineer/artifacts/ats-report.json"
         )
+        XCTAssertEqual(actions[1].confirmationTitle, "Confirm Export")
+        XCTAssertEqual(
+            actions[1].message,
+            "Exports this package's resume to HTML, DOCX, PDF, and text extractions in artifacts/ using Pandoc, Google Chrome, and pdftotext. Vault sync is skipped."
+        )
+        XCTAssertEqual(
+            actions[1].commandPreview(packageName: "2026-05-05_Example_Security_Engineer"),
+            "NAV_CENTER_SKIP_VAULT_SYNC=1 native-export export applications/2026-05-05_Example_Security_Engineer/Resume_2026-05-05_Example_Security_Engineer.md"
+        )
+        XCTAssertEqual(actions[2].message, "Reserved for a later confirmed vault sync workflow.")
+        XCTAssertNil(actions[2].commandPreview(packageName: "2026-05-05_Example_Security_Engineer"))
+    }
+
+    func testExportRailIsDisabledWithReasonWhenExportToolsMissing() {
+        let missingChrome = ToolAvailabilityReport(tools: [
+            toolStatus(.exportTool, .builtIn),
+            toolStatus(.pandoc, .found),
+            toolStatus(.pdftotext, .found),
+            toolStatus(.chrome, .missing)
+        ])
+        let missing = PackageAction.exportArtifacts.availability(missingChrome)
+        XCTAssertFalse(missing.enabled)
+        XCTAssertEqual(missing.reason, "Export needs Pandoc, pdftotext, and Google Chrome. See Settings > External Tools.")
+
+        let invalidExtractor = ToolAvailabilityReport(tools: [
+            toolStatus(.pandoc, .found),
+            toolStatus(.exportTool, .overrideInvalid)
+        ])
+        let invalid = PackageAction.exportArtifacts.availability(invalidExtractor)
+        XCTAssertFalse(invalid.enabled)
+        XCTAssertEqual(invalid.reason, "NAV_CENTER_EXPORT_BIN does not point to an executable file. See Settings > External Tools.")
+
+        XCTAssertTrue(PackageAction.atsScan.availability(missingChrome).enabled)
+        let sync = PackageAction.syncToVault.availability(missingChrome)
+        XCTAssertFalse(sync.enabled)
+        XCTAssertEqual(sync.reason, "Reserved for a later confirmed vault sync workflow.")
+    }
+
+    func testExportRailStaysEnabledWhenExternalExportToolIsConfigured() {
+        let external = ToolAvailabilityReport(tools: [
+            toolStatus(.exportTool, .found),
+            toolStatus(.pandoc, .missing),
+            toolStatus(.pdftotext, .missing),
+            toolStatus(.chrome, .missing)
+        ])
+        let configured = PackageAction.exportArtifacts.availability(external)
+        XCTAssertTrue(configured.enabled)
+        XCTAssertNil(configured.reason)
+
+        let builtInReady = ToolAvailabilityReport(tools: [
+            toolStatus(.exportTool, .builtIn),
+            toolStatus(.pandoc, .found),
+            toolStatus(.pdftotext, .found),
+            toolStatus(.chrome, .found)
+        ])
+        XCTAssertTrue(PackageAction.exportArtifacts.availability(builtInReady).enabled)
+    }
+
+    @MainActor
+    func testStoreLoadsArtifactsTabAfterConfirmedExport() async {
+        let packageName = "2026-01-01_Synthetic_Engineer"
+        let service = IntakeDashboardService()
+        service.confirmedActionResult = ActionResultResponse(
+            ok: true,
+            action: DashboardAction(
+                id: "action_export",
+                action: "export-artifacts",
+                label: "Export Resume Artifacts",
+                packageName: packageName,
+                status: "succeeded",
+                requestedAt: "2026-01-01T00:00:00Z",
+                completedAt: "2026-01-01T00:00:01Z",
+                durationMs: 10,
+                command: nil,
+                outputPath: nil,
+                exitCode: 0,
+                signal: nil,
+                message: "Resume artifacts exported: HTML, DOCX, PDF, and text extractions.",
+                stdoutTail: "",
+                stderrTail: ""
+            )
+        )
+        let store = DashboardStore(service: service)
+        store.selectedPackage = PackageResponse(
+            generatedAt: "2026-01-01T00:00:00Z",
+            package: ApplicationPackage(
+                name: packageName,
+                applicationDir: "applications/\(packageName)",
+                metadata: [:],
+                files: [],
+                tabs: [],
+                artifactSummary: ArtifactSummary(total: 0, previewable: 0, ats: 0, byFormat: [:], byKind: [:]),
+                health: PackageHealth.empty
+            ),
+            application: nil,
+            statusEvents: [],
+            sources: dashboardSources()
+        )
+        store.activePackageTabKey = PackageTabKey.review.rawValue
+
+        await store.runConfirmedAction("export-artifacts", packageName: packageName)
+
+        XCTAssertEqual(service.lastAction?.actionKey, "export-artifacts")
+        XCTAssertEqual(service.lastAction?.confirmed, true)
+        XCTAssertEqual(store.activePackageTabKey, PackageTabKey.artifacts.rawValue)
+        XCTAssertNil(store.errorMessage)
     }
 
     func testTrackerStatusQuickActionsMatchDashboardButtons() {
@@ -244,6 +351,18 @@ final class DashboardParityTests: XCTestCase {
         XCTAssertNil(store.errorMessage)
     }
 
+    private func toolStatus(_ tool: ExternalTool, _ state: ToolState) -> ToolStatus {
+        ToolStatus(
+            tool: tool,
+            state: state,
+            resolvedPath: state == .found ? "/usr/local/bin/\(tool.rawValue)" : nil,
+            source: nil,
+            environmentVariable: tool.environmentVariable,
+            installHint: tool.installHint,
+            summary: state.rawValue
+        )
+    }
+
     private func packageFile(
         _ relativePath: String,
         kind: String,
@@ -278,6 +397,8 @@ private final class IntakeDashboardService: DashboardServicing, @unchecked Senda
     var createdRequests: [JobDescriptionIntakeRequest] = []
     var savedMasterResumeContent = ""
     var sentCodexRequests: [CodexChatRequest] = []
+    var confirmedActionResult: ActionResultResponse?
+    var lastAction: (packageName: String, actionKey: String, confirmed: Bool)?
 
     func createPackage(from request: JobDescriptionIntakeRequest) throws -> CreateApplicationResult {
         createdRequests.append(request)
@@ -377,6 +498,8 @@ private final class IntakeDashboardService: DashboardServicing, @unchecked Senda
     }
 
     func runAction(packageName: String, actionKey: String, confirmed: Bool) throws -> ActionResultResponse {
+        lastAction = (packageName, actionKey, confirmed)
+        if let confirmedActionResult { return confirmedActionResult }
         throw DashboardAPIError.serverUnavailable("not used")
     }
 

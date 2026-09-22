@@ -47,7 +47,7 @@ public final class PackageActionRunner {
         var entry = record(PackageActionEntry(
             id: nextID(),
             action: action,
-            label: action == "ats-scan" ? "Run ATS Scan" : "Refresh Resume PDF",
+            label: action == "ats-scan" ? "Run ATS Scan" : "Export Resume Artifacts",
             packageName: resolved.packageName,
             status: "blocked",
             requestedAt: requestedAt,
@@ -337,7 +337,7 @@ public final class PackageActionRunner {
         switch actionKey.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().replacingOccurrences(of: "_", with: "-") {
         case "ats", "ats-scan", "run-ats-scan":
             return "ats-scan"
-        case "refresh-resume", "resume-refresh", "refresh-pdf":
+        case "refresh-resume", "resume-refresh", "refresh-pdf", "export-artifacts", "export":
             return "refresh-resume"
         default:
             throw NavCenterError.invalidPath("Package action is not supported: \(actionKey)")
@@ -352,7 +352,13 @@ public final class PackageActionRunner {
         case .found:
             if let path = resolved.resolvedPath { command.executable = path }
             return nil
-        case .builtIn where tool == .exportTool && command.executable == "native-export":
+        case .builtIn where action == "refresh-resume" && command.executable == "native-export":
+            for dependency in [ExternalTool.pandoc, .pdftotext, .chrome] {
+                let resolvedDependency = ToolProbe.resolve(dependency, configuration: toolProbe)
+                if resolvedDependency.state != .found {
+                    return ToolProbe.missingToolMessage(resolvedDependency, action: "Document export")
+                }
+            }
             return nil
         case .builtIn:
             let variable = ExternalTool.exportTool.environmentVariable ?? "the override"
@@ -373,7 +379,7 @@ public final class PackageActionRunner {
 
     private func actionMessage(action: String, status: String, exitCode: Int32) -> String {
         if status == "succeeded" {
-            return action == "refresh-resume" ? "Resume PDF refreshed from source markdown." : "ATS scan completed and ats-report.json was refreshed."
+            return action == "refresh-resume" ? "Resume artifacts exported: HTML, DOCX, PDF, and text extractions." : "ATS scan completed and ats-report.json was refreshed."
         }
         if exitCode == 127 {
             let tool: ExternalTool = action == "refresh-resume" ? .exportTool : .atsim
