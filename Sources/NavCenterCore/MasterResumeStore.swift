@@ -28,9 +28,11 @@ public struct MasterResumeSaveResult: Equatable {
 
 public final class MasterResumeStore {
     private let repoRoot: URL
+    private let toolProbe: ToolProbeConfiguration
 
-    public init(repoRoot: URL) {
+    public init(repoRoot: URL, toolProbe: ToolProbeConfiguration? = nil) {
         self.repoRoot = repoRoot.standardizedFileURL
+        self.toolProbe = toolProbe ?? ToolProbeConfiguration()
     }
 
     public func load() throws -> MasterResumeSnapshot {
@@ -90,8 +92,12 @@ public final class MasterResumeStore {
     }
 
     private func validateYAML(_ url: URL) throws {
+        let status = ToolProbe.resolve(.ruby, configuration: toolProbe)
+        guard status.state == .found, let ruby = status.resolvedPath else {
+            throw NavCenterError.invalidPath(ToolProbe.missingToolMessage(status, action: "Master resume save"))
+        }
         let result = try ProcessRunner.run(
-            "ruby",
+            ruby,
             ["-e", Self.yamlValidator, url.path],
             cwd: repoRoot
         )

@@ -15,21 +15,26 @@ public struct ExportedDocument: Equatable {
 public final class ArtifactExporter {
     private let repoRoot: URL
     private let environment: [String: String]
+    private let toolProbe: ToolProbeConfiguration
+    private var pandocPath = ""
+    private var pdftotextPath = ""
+    private var chromePath = ""
 
-    public init(repoRoot: URL, environment: [String: String] = ProcessInfo.processInfo.environment) {
+    public init(repoRoot: URL, environment: [String: String] = ProcessInfo.processInfo.environment, toolProbe: ToolProbeConfiguration? = nil) {
         self.repoRoot = repoRoot
         self.environment = environment
+        self.toolProbe = toolProbe ?? ToolProbeConfiguration(environment: environment)
     }
 
     public func export(markdownPaths: [String]) throws -> [ExportedDocument] {
         guard !markdownPaths.isEmpty else {
             throw NavCenterError.invalidPath("Provide at least one markdown source to export.")
         }
+        pandocPath = try resolvedExecutable(.pandoc)
+        pdftotextPath = try resolvedExecutable(.pdftotext)
+        chromePath = try resolvedExecutable(.chrome)
         try ensureTool(pandocPath)
         try ensureTool(pdftotextPath, arguments: ["-v"])
-        guard FileManager.default.fileExists(atPath: chromePath) else {
-            throw NavCenterError.notFound("Missing Chrome binary: \(chromePath)")
-        }
 
         var results: [ExportedDocument] = []
         for input in markdownPaths {
@@ -39,16 +44,12 @@ public final class ArtifactExporter {
         return results
     }
 
-    private var chromePath: String {
-        environment["CHROME_BIN"].flatMap { $0.isEmpty ? nil : $0 } ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-    }
-
-    private var pandocPath: String {
-        environment["PANDOC_BIN"].flatMap { $0.isEmpty ? nil : $0 } ?? "pandoc"
-    }
-
-    private var pdftotextPath: String {
-        environment["PDFTOTEXT_BIN"].flatMap { $0.isEmpty ? nil : $0 } ?? "pdftotext"
+    private func resolvedExecutable(_ tool: ExternalTool) throws -> String {
+        let status = ToolProbe.resolve(tool, configuration: toolProbe)
+        guard status.state == .found, let path = status.resolvedPath else {
+            throw NavCenterError.notFound(ToolProbe.missingToolMessage(status, action: "Document export"))
+        }
+        return path
     }
 
     private var outputRoot: URL {

@@ -75,6 +75,71 @@ class CLITests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(sorted(str(p.relative_to(self.workspace)) for p in self.workspace.rglob("*")), before)
 
+    def test_doctor_reports_tools_without_writing_to_workspace(self):
+        self.assertEqual(self.run_cli("init-workspace", "--workspace", self.workspace).returncode, 0)
+        before = self.workspace_listing()
+        missing = self.root / "missing-atsim"
+        env = dict(self.env, NAV_CENTER_ATSIM_BIN=str(missing))
+        result = subprocess.run(
+            [os.environ["NAVCENTERCTL"], "doctor", "--json", "--workspace", self.workspace],
+            env=env, capture_output=True, text=True, timeout=15,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        tools = json.loads(result.stdout)["tools"]
+        self.assertEqual([tool["tool"] for tool in tools], [
+            "atsim", "export-tool", "pandoc", "pdftotext", "chrome", "ruby", "codex",
+        ])
+        self.assertEqual(tools[0]["state"], "override-invalid")
+        self.assertEqual(tools[0]["environmentVariable"], "NAV_CENTER_ATSIM_BIN")
+        self.assertNotIn("/Users/", result.stdout)
+        self.assertEqual(self.workspace_listing(), before)
+
+    def test_doctor_human_output_lists_every_tool_and_env_var(self):
+        self.assertEqual(self.run_cli("init-workspace", "--workspace", self.workspace).returncode, 0)
+        result = self.run_cli("doctor", "--workspace", self.workspace)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for name in ("atsim", "export-tool", "pandoc", "pdftotext", "chrome", "ruby", "codex"):
+            self.assertIn(name, result.stdout)
+        for variable in (
+            "NAV_CENTER_ATSIM_BIN", "NAV_CENTER_EXPORT_BIN", "PANDOC_BIN",
+            "PDFTOTEXT_BIN", "CHROME_BIN", "DASHBOARD_CODEX_BIN",
+        ):
+            self.assertIn(variable, result.stdout)
+        self.assertIn("Tools:", result.stdout)
+        self.assertIn(
+            "Finder-launched apps do not see your shell PATH. Tools in /opt/homebrew/bin, "
+            "/usr/local/bin, or ~/.local/bin are found automatically; otherwise set the variable "
+            "with `launchctl setenv NAME /absolute/path` before opening Nav Center.",
+            result.stdout,
+        )
+
+    def test_feedback_diagnostics_is_redacted_by_default_and_opt_in_is_explicit(self):
+        self.assertEqual(self.run_cli("init-workspace", "--workspace", self.workspace).returncode, 0)
+        home = str(Path.home())
+        default = self.run_cli("feedback-diagnostics", "--workspace", self.workspace)
+        self.assertEqual(default.returncode, 0, default.stderr)
+        self.assertEqual(json.loads(default.stdout)["workspace"]["path"], "<workspace>")
+        self.assertIn("<workspace>", default.stdout)
+        self.assertNotIn(home, default.stdout)
+        self.assertNotIn(str(self.workspace), default.stdout)
+        alias = self.run_cli("feedback-diagnostics", "--redact", "--workspace", self.workspace)
+        self.assertEqual(alias.returncode, 0, alias.stderr)
+        self.assertEqual(json.loads(alias.stdout)["workspace"]["path"], "<workspace>")
+        opened = self.run_cli("feedback-diagnostics", "--include-unredacted", "--workspace", self.workspace)
+        self.assertEqual(opened.returncode, 0, opened.stderr)
+        self.assertEqual(json.loads(opened.stdout)["workspace"]["path"], str(self.workspace))
+        self.assertNotIn("<workspace>", json.loads(opened.stdout)["workspace"]["path"])
+        missing = self.root / "does-not-exist"
+        before = sorted(path.relative_to(self.root).as_posix() for path in self.root.rglob("*"))
+        bogus = self.run_cli("feedback-diagnostics", "--bogus", "--workspace", missing)
+        self.assertNotEqual(bogus.returncode, 0)
+        self.assertFalse(missing.exists())
+        after = sorted(path.relative_to(self.root).as_posix() for path in self.root.rglob("*"))
+        self.assertEqual(before, after)
+
+    def workspace_listing(self):
+        return sorted(str(path.relative_to(self.workspace)) for path in self.workspace.rglob("*"))
+
 
 if __name__ == "__main__":
     unittest.main()

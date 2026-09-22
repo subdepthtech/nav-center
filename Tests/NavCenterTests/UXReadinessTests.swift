@@ -9,6 +9,10 @@ import struct NavCenterCore.PackageCleanupCandidate
 import struct NavCenterCore.PackageCleanupPreview
 import struct NavCenterCore.PackageCleanupResult
 import struct NavCenterCore.ImportedDocument
+import class NavCenterCore.MasterResumeStore
+import class NavCenterCore.WorkspaceManager
+import struct NavCenterCore.ToolProbeConfiguration
+import enum NavCenterCore.NavCenterError
 @testable import NavCenterApp
 
 
@@ -127,6 +131,35 @@ final class UXReadinessTests: XCTestCase {
         await kit.value
         XCTAssertNil(store.selectedPackage)
         XCTAssertNil(store.interviewKitMessage)
+    }
+
+    func testMasterResumeSaveWithoutRubyFailsWithNamedToolMessageAndKeepsDraft() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("navcenter-ux-ruby-" + UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        _ = try WorkspaceManager(workspaceRoot: root).initialize()
+        let resume = root.appendingPathComponent("master-resumes/master_primary.yaml")
+        let original = try Data(contentsOf: resume)
+        let probe = ToolProbeConfiguration(
+            environment: ["PATH": ""],
+            homeDirectory: root,
+            fallbackDirectories: [],
+            isExecutableRegularFile: { _ in false }
+        )
+        let draft = "profile:\n  name: Synthetic unsaved draft\n"
+
+        XCTAssertThrowsError(try MasterResumeStore(repoRoot: root, toolProbe: probe).save(content: draft)) { error in
+            XCTAssertEqual(
+                error as? NavCenterError,
+                .invalidPath("Master resume save needs Ruby, which was not found on PATH. Reinstall Xcode Command Line Tools or use the Ruby included with macOS at /usr/bin/ruby.")
+            )
+        }
+
+        XCTAssertEqual(try Data(contentsOf: resume), original)
+        let work = root.appendingPathComponent("tmp/master-resume-editor")
+        let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: work.path)) ?? []
+        XCTAssertFalse(leftovers.contains { $0.hasPrefix("candidate-") })
+        let backups = work.appendingPathComponent("backups")
+        XCTAssertEqual((try? FileManager.default.contentsOfDirectory(atPath: backups.path)) ?? [], [])
     }
 
     @MainActor

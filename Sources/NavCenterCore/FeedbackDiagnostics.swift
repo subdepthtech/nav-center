@@ -6,6 +6,7 @@ public struct FeedbackDiagnosticsReport: Codable, Equatable {
     public let macOSVersion: String
     public let workspace: WorkspaceDiagnostics
     public let recentLogs: [String]
+    public let tools: ToolAvailabilityReport
 }
 
 public struct WorkspaceDiagnostics: Codable, Equatable {
@@ -24,19 +25,23 @@ public final class FeedbackDiagnostics {
     private let appVersion: String
     private let fileManager: FileManager
     private let now: () -> Date
+    private let toolProbe: ToolProbeConfiguration
 
     public init(
         workspaceRoot: URL,
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
         appVersion: String = FeedbackDiagnostics.buildVersion,
         fileManager: FileManager = .default,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        toolProbe: ToolProbeConfiguration? = nil
     ) {
+        let home = homeDirectory.standardizedFileURL
         self.workspaceRoot = workspaceRoot.standardizedFileURL
-        self.homeDirectory = homeDirectory.standardizedFileURL
+        self.homeDirectory = home
         self.appVersion = appVersion
         self.fileManager = fileManager
         self.now = now
+        self.toolProbe = toolProbe ?? ToolProbeConfiguration(environment: ProcessInfo.processInfo.environment, homeDirectory: home)
     }
 
     public static var buildVersion: String {
@@ -53,12 +58,14 @@ public final class FeedbackDiagnostics {
     public func report(redact: Bool) -> FeedbackDiagnosticsReport {
         let redactor = Redactor(homeDirectory: homeDirectory, enabled: redact)
         let workspace = workspaceReport(redactor: redactor)
+        let availability = ToolProbe.report(configuration: toolProbe)
         return FeedbackDiagnosticsReport(
             generatedAt: ISO8601DateFormatter().string(from: now()),
             appVersion: appVersion,
             macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
             workspace: workspace,
-            recentLogs: redact ? [] : recentLogs(redactor: redactor)
+            recentLogs: recentLogs(redactor: redactor),
+            tools: redact ? availability.redacted(homeDirectory: homeDirectory) : availability
         )
     }
 
