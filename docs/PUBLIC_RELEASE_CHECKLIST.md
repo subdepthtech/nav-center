@@ -43,6 +43,7 @@ Excluded:
 5. Confirm the bundle identifier and signing/notarization plan.
 6. Add release screenshots only after checking them for private data.
 7. Create the GitHub repository only after the extracted tree is clean.
+8. Confirm the atsim notice in `THIRD_PARTY_NOTICES.md`: replace `PENDING UPSTREAM CONFIRMATION` with the upstream-confirmed license text before any distribution build.
 
 ## Release Artifact Contract
 
