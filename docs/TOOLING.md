@@ -8,7 +8,7 @@ Use [SETUP.md](SETUP.md) for current completion and blockers, [TESTING.md](TESTI
 | --- | --- | --- |
 | Repository | Gitleaks 8.30.1 | Current source and full Git history, with redacted findings |
 | Workflows | actionlint 1.7.12; zizmor 1.30.1 auditor mode | YAML/expression/shell checks and workflow security |
-| Native | CI: Xcode 26.6 on macos-26 (Swift version recorded in the CI toolchain artifact); local toolchain recorded in SETUP.md | Full builds, XCTest, real coverage, CLI and sanitizers |
+| Native | CI: Xcode 26.6 (17F113) / Swift 6.3.3 on macos-26, macOS 26.6.2 ([observed artifact](https://github.com/subdepthtech/nav-center/actions/runs/35805836880)); within SonarCloud's documented Swift support through 6.3; local toolchain recorded in SETUP.md | Full builds, XCTest, real coverage, CLI and sanitizers |
 | Formatting | Apple's official swift-format from the selected Xcode | Read-only style baseline; advisory during adoption |
 | Swift lint | SwiftLint 0.65.1 | Five correctness rules; no duplicate whitespace rules; advisory baseline |
 | Security | Existing CodeQL default setup, secret scanning, push protection | Preserve Swift/Actions extended analysis and repository secret controls |
