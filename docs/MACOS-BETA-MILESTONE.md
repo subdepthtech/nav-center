@@ -1,6 +1,6 @@
 # Milestone: reliable, installable macOS beta
 
-Status: milestone plan, written 2026-09-22 against `main` `45293d38c7ceb69630444050aaa73afdd507f290`; current progress is recorded in §7. This document authorizes nothing by itself. Each work package (WP) states whether it can proceed autonomously or needs credentials, a physical device, service terms, or explicit release authorization. CI success, a built DMG, or an uploaded artifact is never release acceptance; only the evidence named per WP is.
+Status: milestone plan, written 2026-09-22 against `main` `45293d38c7ceb69630444050aaa73afdd507f290`; current progress is recorded in §7, updated 2026-09-23. This document authorizes nothing by itself. Each work package (WP) states whether it can proceed autonomously or needs credentials, a physical device, service terms, or explicit release authorization. CI success, a built DMG, or an uploaded artifact is never release acceptance; only the evidence named per WP is.
 
 Out of scope for this milestone: iOS, any backend or hosted service, application submission, the interview voice pilot (P0–P5 of the 2026-09-18 plan), MCP/Apps SDK, public plugin-directory submission, Sonar activation, CodeRabbit, and feature expansion beyond what the WPs name.
 
@@ -16,7 +16,7 @@ Out of scope for this milestone: iOS, any backend or hosted service, application
 | Local re-verification | macOS 27.0 / Xcode 27.0 / Swift 6.4 arm64: `swift test` 178 passed, 3 opt-in skips, 0 failures; `test_cli.py` 4 passed; release-script/tooling suite 61 passed, 4 CLI opt-in skips; `bash -n scripts/*.sh` clean; committed-range whitespace check clean |
 | Branch protection | ruleset "Main review and verified checks" active: PR required, review threads resolved, required checks "Repository checks" and "Build, test and release contracts", no bypass actors |
 | Environments | `claude` (required reviewers), `release` (required reviewers + branch policy), `sonar` (branch policy) |
-| Secrets | repository: `CLAUDE_CODE_OAUTH_TOKEN` only; `release` environment: none. No Apple signing or notarization credentials anywhere |
+| Secrets | repository: `CLAUDE_CODE_OAUTH_TOKEN` only; `release` environment: none. No Apple signing or notarization credentials anywhere (superseded 2026-09-23: see U2 in §2.2) |
 | Local signing | 0 valid code-signing identities on the dev machine; no `notarytool` keychain profile |
 | Release pipeline | `.github/workflows/beta-release.yml` has never run. It signs, notarizes, staples, mounts the DMG read-only and runs `spctl`, then uploads a 90-day Actions artifact. It never creates a GitHub Release, tag, or tap commit |
 | Prior beta | GitHub prerelease `v0.1.0-beta` (tag `c45ae21`, 2026-05-18, ancestor of main) with `NavCenter-0.1.0-beta-macos-arm64.dmg` + `.sha256`; notes say "Notarization/stapling still required" |
@@ -67,14 +67,14 @@ Closeout verdict: complete for its stated scope (hardening baseline, protection,
 
 ### 2.2 Owner decisions
 
-| # | Decision | Options | Recommendation | Decision (2026-09-22) | Needed by |
+| # | Decision | Options | Recommendation | Decision | Needed by |
 | --- | --- | --- | --- | --- | --- |
-| U1 | Advertised minimum macOS | (a) keep 13 and test on a physical or VM macOS 13 device; (b) raise to 14 (oldest hosted image) and test 14 in CI; (c) keep 13 advertised but state "tested on 14+" | (b) unless a macOS 13 test device exists. Advertising an untested floor contradicts `RELEASE.md` | Decided: (d) support the latest two major macOS releases, macOS 26 and 27, so the minimum is macOS 26. This supersedes the owner's earlier same-day choice of (b), macOS 14. Every Apple silicon Mac can run macOS 26, and the beta is arm64-only, so no hardware is excluded. The PR gate and release build move to `macos-26` with Xcode 26.6, and the floor rises when a new major macOS ships | WP9 |
-| U2 | Apple credentials: Developer ID Application certificate (team `3364PH2HE3` signed the May build; the identity is no longer on this machine) and an App Store Connect API key for notarization, stored only as `release` environment secrets | provision now vs later | Provision before WP11; nothing else is blocked by it | Pending owner action. Verified 2026-09-22: the `release` environment has 0 secrets; required reviewer is `austinkennethtucker`. Only WP11 is blocked by credentials. | WP11 |
-| U3 | atsim license text and copyright holder for `THIRD_PARTY_NOTICES.md` | (a) add a LICENSE upstream and re-snapshot or cite it; (b) supply the MIT text and holder directly to the notices file; (c) keep the placeholder and refuse `--distribution` while pending | (a) or (b), decided by the owner, who is also the upstream author; upstream has no LICENSE at HEAD, so "confirm with upstream" is an owner action, not a lookup; do not invent the text | Decided (b): MIT License; copyright holder Austin Tucker, year 2026. | WP1 / WP11 |
-| U4 | Homebrew tap semantics for the beta | keep tap as a documented install path (update cask per beta) vs DMG-only until GA | Keep the tap, but fix the caveat and only publish casks for notarized artifacts (R3) | Decided: keep the tap as an alternative install path; update casks only from notarized artifacts with accepted notary evidence. WP10 implemented this in PR #12. | WP10 |
-| U5 | Tester cohort and stop criteria for the controlled rollout | size, channel, what feedback halts distribution | Friends-and-family cohort ≤ 10, feedback via `feedback-diagnostics` output pasted into a private channel; halt on any data-loss or Gatekeeper report | Decided: up to 10 friends and family; collect redacted `navcenterctl feedback-diagnostics` output or Help > Copy Redacted Diagnostics in a private channel. Any data loss, Gatekeeper rejection, or unrecoverable first-launch failure pauses distribution until fixed and re-verified through WP11–WP12. | WP13 |
-| U6 | Intel support after this beta | none / build on `macos-15-intel` later | Revisit after rollout feedback | Decided: none for this beta; Intel is not supported. Revisit after rollout feedback. | after milestone |
+| U1 | Advertised minimum macOS | (a) keep 13 and test on a physical or VM macOS 13 device; (b) raise to 14 (oldest hosted image) and test 14 in CI; (c) keep 13 advertised but state "tested on 14+" | (b) unless a macOS 13 test device exists. Advertising an untested floor contradicts `RELEASE.md` | Decided (2026-09-22): (d) support the latest two major macOS releases, macOS 26 and 27, so the minimum is macOS 26. This supersedes the owner's earlier same-day choice of (b), macOS 14. Every Apple silicon Mac can run macOS 26, and the beta is arm64-only, so no hardware is excluded. The PR gate and release build move to `macos-26` with Xcode 26.6, and the floor rises when a new major macOS ships | WP9 |
+| U2 | Apple credentials: Developer ID Application certificate (team `3364PH2HE3` signed the May build; the identity is no longer on this machine) and an App Store Connect API key for notarization, stored only as `release` environment secrets | provision now vs later | Provision before WP11; nothing else is blocked by it | Provisioned (2026-09-23): a names-only GitHub API listing confirmed all six secrets referenced by `.github/workflows/beta-release.yml` are present in the `release` environment: `DEVELOPER_ID_CERTIFICATE_BASE64`, `DEVELOPER_ID_CERTIFICATE_PASSWORD`, `DEVELOPER_ID_APPLICATION`, `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_PRIVATE_KEY`. Values were not read or recorded. The owner reports provisioning from the owner's existing credential store and structural validation. U2 no longer blocks WP11. WP11 still needs the WP7 and WP8 manual gates, explicit release authorization, and approval of the workflow run by the `release` environment reviewer, `austinkennethtucker`. | WP11 |
+| U3 | atsim license text and copyright holder for `THIRD_PARTY_NOTICES.md` | (a) add a LICENSE upstream and re-snapshot or cite it; (b) supply the MIT text and holder directly to the notices file; (c) keep the placeholder and refuse `--distribution` while pending | (a) or (b), decided by the owner, who is also the upstream author; upstream has no LICENSE at HEAD, so "confirm with upstream" is an owner action, not a lookup; do not invent the text | Decided (b) (2026-09-22): MIT License; copyright holder Austin Tucker, year 2026. | WP1 / WP11 |
+| U4 | Homebrew tap semantics for the beta | keep tap as a documented install path (update cask per beta) vs DMG-only until GA | Keep the tap, but fix the caveat and only publish casks for notarized artifacts (R3) | Decided (2026-09-22): keep the tap as an alternative install path; update casks only from notarized artifacts with accepted notary evidence. WP10 implemented this in PR #12. | WP10 |
+| U5 | Tester cohort and stop criteria for the controlled rollout | size, channel, what feedback halts distribution | Friends-and-family cohort ≤ 10, feedback via `feedback-diagnostics` output pasted into a private channel; halt on any data-loss or Gatekeeper report | Decided (2026-09-22): up to 10 friends and family; collect redacted `navcenterctl feedback-diagnostics` output or Help > Copy Redacted Diagnostics in a private channel. Any data loss, Gatekeeper rejection, or unrecoverable first-launch failure pauses distribution until fixed and re-verified through WP11–WP12. | WP13 |
+| U6 | Intel support after this beta | none / build on `macos-15-intel` later | Revisit after rollout feedback | Decided (2026-09-22): none for this beta; Intel is not supported. Revisit after rollout feedback. | after milestone |
 
 ## 3. Work packages
 
@@ -161,6 +161,7 @@ Deferrable: if schedule pressure appears, this WP may slip past the beta without
 
 ### WP7 — Keyboard access and accessibility pass — M
 
+- Status: code and the "GUI and accessibility gate (manual)" checklist in `docs/TESTING.md` merged as PR #18 (`800ed29`); the manual VoiceOver/keyboard run has not been done, and `docs/setup-evidence/beta-0.1.0-beta.1/accessibility-checklist.md` does not exist yet. This is a blocker before WP11.
 - Outcome: every actionable control has an accessibility identifier and label; the main sections, search, back, and the two confirmation-gated actions have keyboard shortcuts; focus lands sensibly; the window's minimum size does not clip the review pane; a manual VoiceOver checklist exists and is run once on the beta candidate.
 - Scope: new `Sources/NavCenterApp/Models/AccessibilityIdentifiers.swift` (namespaced registry: `sidebar.*`, `toolbar.*`, `package.rail.*`, `package.status.*`, `package.tab.*`, `cleanup.*`, `codex.*`, `settings.*`, `intake.*`, `resume.*`) applied to every Button/TextField/TextEditor/Picker/sidebar row; labels + `.help` on icon-only buttons; `StatCard`/`SummaryMetric` combined. Commands: `CommandMenu("Go")` ⌘1…⌘7 for destinations, ⌘, → Settings destination (R4), ⌘⇧C toggle Codex panel, ⌘[ back to list, ⌘⇧A open ATS confirm block, ⌘⇧E open Export confirm block, keep ⌘R; a Help-menu item "Copy Redacted Diagnostics" that puts the redacted `FeedbackDiagnostics` JSON on the pasteboard (same output as the CLI default after WP2); no status quick-action shortcuts (R8). Store gets `requestedDestination`/`requestedRailAction` consumed by `ContentView`. `@FocusState` for search (⌘F), Esc closes package detail, confirm blocks focus their primary button, Codex input focused on open. New `LayoutMetrics` (window 820×620, review pane minimum 480) replacing the 660 literal. `docs/TESTING.md` gains a "GUI/accessibility gate" manual checklist (VO tab order, announcements for rail/status/cleanup/Codex controls, shortcut behavior, 820×620 without clipping, Reduce Motion).
 - Do not touch: store business logic; `NativeCodexBridge`; `defaultFocus` (not needed; allowed once WP9 raises the minimum to macOS 26).
@@ -172,6 +173,7 @@ Deferrable: if schedule pressure appears, this WP may slip past the beta without
 
 ### WP8 — Integration acceptance lane and support boundaries — M
 
+- Status: the lane, workflow job, and docs merged as PR #16 (`18b796e`); lane evidence is in `docs/setup-evidence/beta-0.1.0-beta.1/integration-acceptance.md`. Codex live acceptance (manual) has not been run and is a blocker before WP11.
 - Outcome: one script and one doc answer "which optional integrations are accepted for this beta, on what versions, and what happens when they are absent"; explicit skips are visible, never silent.
 - Scope: new `scripts/integration-acceptance.sh` that (1) records versions of atsim, pandoc, Chrome, pdftotext, ruby, codex via WP2's `doctor --json` plus the tools' own `--version` where safe, (2) runs `swift test --filter ATSActionReadinessTests` with `NAV_CENTER_TEST_ATSIM_BIN` set, `--filter RendererReadinessTests` with `NAV_CENTER_TEST_REAL_CHROME=1`, `--filter ExportToolReadinessTests` with `NAV_CENTER_TEST_REAL_EXPORT=1`, and the `test_cli.py` real export lane, (3) fails if any requested tool is missing (no skip), (4) writes a redacted JSON + markdown summary into a caller-supplied output dir. Codex live acceptance is a manual checklist in `docs/TESTING.md` (signed-in `codex app-server`, one chat without edits, one chat with edits requiring confirmation, staging dir 0700, server stopped before apply, `~/.codex` untouched by the app) with the observed Codex CLI version recorded; no test drives the real Codex binary. New CI job `integration-acceptance` in `ci.yml` on `workflow_dispatch` only (installs pandoc/poppler via brew on the runner, uses the runner's Chrome, installs atsim from `vendor/atsim` into a temp venv purely for the lane), so it never gates PRs. `docs/BETA.md` "Known Beta Limits" rewritten as a support table: integration, accepted version(s) observed, behavior when absent (WP2 message), whether tested by CI/local lane/manual.
 - Dependencies: WP2, WP5. PR boundary: one PR (script + workflow job + docs + tests).
@@ -182,6 +184,7 @@ Deferrable: if schedule pressure appears, this WP may slip past the beta without
 
 ### WP9 — Supported macOS versions and architectures — S/M
 
+- Status: complete, merged as PR #20 (`8ac8558`); `minimum_macos` in `scripts/tool-versions.json` is the single source for the macOS 26 floor, and `test_minimum_macos_is_single_sourced` checks that the package, generated Info.plist, cask, README, and BETA agree with it; the required, manual integration, and release workflows use `macos-26` with Xcode 26.6, while Sonar runs on `macos-26`; `docs/BETA.md` now has a Support matrix with Advertised and Tested tables. The TSan listener follow-up recorded in `docs/setup-evidence/beta-0.1.0-beta.1/maintainer-mac-verification.md` was fixed by test-only PR #21 (`ebe5448`). The Tested rows for WP11 and WP12 in the BETA support matrix remain pending by design.
 - Outcome: README, BETA, cask, and Info.plist agree on what is advertised; docs say separately what is tested; CI exercises the oldest advertised hosted image.
 - Scope: U1 is decided as (d), the latest two major releases, so the minimum is macOS 26. Set `Package.swift` to `.macOS("26.0")`, `MIN_SYSTEM_VERSION=26.0` in the generated Info.plist, cask `depends_on macos: ">= :tahoe"`, and README "macOS 26 or later (Apple silicon)". Move the required PR job (`ci.yml`), the release workflow and the Sonar workflow from `macos-15`/Xcode 26.3 to `macos-26`/Xcode 26.6, so CI runs on the oldest supported OS; no separate compatibility job is needed. Add a "Support matrix" section to `docs/BETA.md` with Advertised and Tested columns (OS build, arch, toolchain, date, evidence link), including the policy that support follows the latest two major macOS releases. Intel is not supported (U6). Make `scripts/tests/test_release_scripts.py` assert that README, BETA, the cask and `build-and-run.sh` agree on the minimum version, with `scripts/tool-versions.json` `minimum_macos` as the single source.
 - Dependencies: U1 decided; WP1 (script tests structure). PR boundary: one PR.
@@ -201,12 +204,13 @@ Deferrable: if schedule pressure appears, this WP may slip past the beta without
 
 ### WP11 — Signed, notarized, stapled candidate — S (mostly waiting)
 
+- Status: not started.
 - Outcome: one exact artifact `NavCenter-0.1.0-beta.1-macos-arm64.dmg` produced by `beta-release.yml` from a named `main` SHA, with `.sha256`, `.notary.json` (status Accepted), `BUILD.txt`, SBOM, notices; Gatekeeper verification observed inside the workflow on the mounted image.
-- Prerequisites (human): U2 credentials stored as `release` environment secrets (`DEVELOPER_ID_CERTIFICATE_BASE64`, `DEVELOPER_ID_CERTIFICATE_PASSWORD`, `DEVELOPER_ID_APPLICATION`, `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_PRIVATE_KEY`); U3 license terms recorded in `THIRD_PARTY_NOTICES.md` (the `--distribution` build still refuses a pending marker); the `release` environment reviewer approves the run.
+- Prerequisites (human): U2 met 2026-09-23: all six `release` environment secret names are present (`DEVELOPER_ID_CERTIFICATE_BASE64`, `DEVELOPER_ID_CERTIFICATE_PASSWORD`, `DEVELOPER_ID_APPLICATION`, `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_PRIVATE_KEY`); values were not recorded. U3 met in PR #19 (`e6f8b18`): the confirmed atsim MIT License text is recorded in `THIRD_PARTY_NOTICES.md`, with no `PENDING UPSTREAM CONFIRMATION` marker. WP7 VoiceOver/keyboard evidence and WP8 Codex live acceptance must be recorded first. WP11 also requires explicit release authorization and the `release` environment reviewer's approval of the workflow run.
 - Steps: dispatch with version `0.1.0-beta.1` and the chosen build; approve; download the artifact; run the in-repo verifier locally (checksum, `codesign --verify --deep --strict` on app and DMG, `spctl -a -vv -t execute` and `-t open --context context:primary-signature`, `stapler validate`, version strings, notices present). Record run ID, source SHA, toolchain from `BUILD.txt`.
 - Acceptance: every verifier check passes on the downloaded bytes, not the runner's; `.notary.json` status Accepted; checksum file matches post-staple bytes.
 - Evidence: `docs/setup-evidence/beta-0.1.0-beta.1/artifact-verification.md` (run ID, SHA, checksums, verifier output, `xcrun stapler validate` output). No credential material, no private paths.
-- Autonomy: needs credentials and explicit release authorization; nothing here may be started by Claude Code on its own.
+- Autonomy: needs explicit release authorization; nothing here may be started by Claude Code on its own.
 
 ### WP12 — Clean-machine installation, offline launch, upgrade, uninstall — M (human-driven)
 
@@ -239,7 +243,7 @@ flowchart LR
   U1{U1 min macOS} --> WP9[WP9 support matrix]
   WP1 --> WP10[WP10 release metadata]
   WP9 --> WP10
-  U2{U2 credentials} --> WP11[WP11 signed candidate]
+  U2{U2 credentials provisioned} --> WP11[WP11 signed candidate]
   U3{U3 atsim license} --> WP11
   WP7 --> WP11
   WP8 --> WP11
@@ -248,9 +252,9 @@ flowchart LR
   WP12 --> WP13[WP13 rollout]
 ```
 
-Original recommended merge order (superseded by §7): WP0 → WP1 → WP2 → WP3 → WP4 → WP5 → WP6 → WP7 → WP8 → WP9 → WP10 → WP11 → WP12 → WP13. WP3/WP4 could run in parallel with each other after WP2; WP8 and WP9 could run in parallel after WP5. U1 and U3 are decided; U2 remains an owner action before WP11.
+Original recommended merge order (superseded by §7): WP0 → WP1 → WP2 → WP3 → WP4 → WP5 → WP6 → WP7 → WP8 → WP9 → WP10 → WP11 → WP12 → WP13. WP3/WP4 could run in parallel with each other after WP2; WP8 and WP9 could run in parallel after WP5. U1 and U3–U6 were decided on 2026-09-22; U2 was provisioned on 2026-09-23.
 
-Critical path (longest dependent chain): WP1 → WP2 → WP5 → WP7 → WP11 → WP12 → WP13. U3 license text is now recorded; U2 credentials remain the owner action before WP11.
+Critical path (original longest dependent chain): WP1 → WP2 → WP5 → WP7 → WP11 → WP12 → WP13. As of 2026-09-23, every code WP (WP0–WP10) is merged. The remaining path is WP7 VoiceOver/keyboard evidence and WP8 Codex live acceptance (both human gates, which can run in parallel) → WP11 (explicit release authorization and `release` reviewer approval) → WP12 → WP13.
 
 ## 5. Verification per code PR (run by Claude Code, not the delegate)
 
@@ -265,13 +269,13 @@ git log --format= --check --diff-merges=remerge "$(git merge-base main HEAD)..HE
 bash -n scripts/*.sh
 ```
 
-Plus `path-safety-reviewer` for any Core write or subprocess path, a grok adversarial review of the diff before the checks, and the ledger row quoted in the PR handoff. CI on the pinned Xcode (26.3 on macos-15, moving to 26.6 on macos-26 with WP9) is the toolchain-compatibility word; local Xcode 27 results are supplementary.
+Plus `path-safety-reviewer` for any Core write or subprocess path, a grok adversarial review of the diff before the checks, and the ledger row quoted in the PR handoff. CI on the pinned Xcode 26.6 on `macos-26` since WP9 (PR #20) is the toolchain-compatibility word; local Xcode 27 results are supplementary.
 
 ## 6. First implementation task
 
 Historical first task: WP1 (attribution and notices). WP1–WP5 are merged; they were implemented with grok `grok-4.7` effort `high` during the 2026-09-22 codex and agy quota exhaustion, and each PR records its implementation and review routes. The current routing rule is R11.
 
-## 7. Status (2026-09-22)
+## 7. Status (2026-09-23)
 
 | WP | PR | Merge commit |
 | --- | --- | --- |
@@ -286,7 +290,12 @@ Historical first task: WP1 (attribution and notices). WP1–WP5 are merged; they
 | WP8 | #16 | `18b796e` |
 | WP6 | #17 | `9bc9066` |
 | WP7 | #18 | `800ed29` |
+| Owner decisions U1, U3–U6 | #19 | `e6f8b18` |
+| WP9 | #20 | `8ac8558` |
+| WP9 follow-up: TSan listener test fix | #21 | `ebe5448` |
 
-Open: WP9 (U1 decided as macOS 26+, in progress). Human-gated: WP7 VoiceOver/GUI checklist, WP8 Codex live checklist, U2 credentials, WP11, WP12, WP13.
+Open autonomous work: none. Human-gated blockers before WP11: WP7 VoiceOver/keyboard checklist (not run) and WP8 Codex live acceptance (not run). Then WP11 (not started; U2 provisioned 2026-09-23; needs explicit release authorization and the `release` reviewer's approval), WP12 (checklist merged in #13; clean-machine run not started), WP13 (not started).
 
 Autonomous endpoint verified on `main` `800ed29`: full checks green on plain, ASan, and TSan (268 tests); `build-and-run.sh --verify` passed. An unsigned internal DMG, build 2, contained LICENSE and notices and had correct version strings; it is never distributable.
+
+Latest verified `main` is `ebe5448` (2026-09-23). Hosted CI run 35862963611 on that commit: "Repository checks" succeeded and "Build, test and release contracts" succeeded on `macos-26` with Xcode 26.6, running plain `swift test`, ASan, and TSan. The local standard CI gate on the identical tree (macOS 27.0, Xcode 27.0, arm64) passed: `swift test` 268 tests, 4 opt-in skips, 0 failures; `test_cli.py` 15 ran, 1 skip; `scripts/tests` 98 ran, 15 skips; release build passed. Local sanitizers were not run; the hosted required job covers ASan and TSan.
