@@ -294,7 +294,7 @@ Historical first task: WP1 (attribution and notices). WP1–WP5 are merged; they
 | WP9 | #20 | `8ac8558` |
 | WP9 follow-up: TSan listener test fix | #21 | `ebe5448` |
 
-Open autonomous work: none. Human-gated blockers before WP11: WP7 VoiceOver/keyboard checklist (not run) and WP8 Codex live acceptance (not run). Then WP11 (not started; U2 provisioned 2026-09-23; needs explicit release authorization and the `release` reviewer's approval), WP12 (checklist merged in #13; clean-machine run not started), WP13 (not started).
+Open autonomous milestone work: none. Human-gated blockers before WP11: WP7 VoiceOver/keyboard checklist (not run) and WP8 Codex live acceptance (not run). Then WP11 (not started; U2 provisioned 2026-09-23; needs explicit release authorization and the `release` reviewer's approval), WP12 (checklist merged in #13; clean-machine run not started), WP13 (not started).
 
 Autonomous endpoint verified on `main` `800ed29`: full checks green on plain, ASan, and TSan (268 tests); `build-and-run.sh --verify` passed. An unsigned internal DMG, build 2, contained LICENSE and notices and had correct version strings; it is never distributable.
 

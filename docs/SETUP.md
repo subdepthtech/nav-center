@@ -26,7 +26,7 @@ The [September 22 settings readback](setup-evidence/github-settings-2026-09-22.j
 | Security | Secret scanning, push protection and Dependabot security updates enabled; existing CodeQL extended default setup covers Actions, Python and Swift |
 | Sonar | Main-only environment exists; no repository variables or Sonar environment token configured; workflow remains off and nonrequired |
 
-The published manual [Beta Release workflow](../.github/workflows/beta-release.yml) uses the `release` environment and restricts execution to main. Repository and release-environment secret-name inventories contain no Apple signing credentials. No credentials, organization-wide access or third-party service terms were added for this closeout.
+The published manual [Beta Release workflow](../.github/workflows/beta-release.yml) uses the `release` environment and restricts execution to main. At this closeout, repository and release-environment secret-name inventories contained no Apple signing credentials. On 2026-09-23, the owner provisioned the six `release` environment secrets that `beta-release.yml` references (names only); see U2 in [MACOS-BETA-MILESTONE.md](MACOS-BETA-MILESTONE.md). No credentials, organization-wide access or third-party service terms were added for this closeout.
 
 ## Validation evidence
 
@@ -59,7 +59,8 @@ Development checks do not complete these acceptance gates:
 - Extend the successful synthetic export smoke to representative Unicode, layout and error cases. Verify a reviewed installed ATS executable and a live signed-in Codex session with package-edit confirmation separately. Standard native tests still skip the opt-in installed Chrome and two ATS tests unless explicitly configured; the separate export smoke does not replace those tests. Preserve skipped or unavailable evidence.
 - Done 2026-09-22 (#19): the frozen ATS snapshot's license notice is complete (MIT, confirmed by the holder) in `THIRD_PARTY_NOTICES.md`. Keep its manifest and dependency boundary intact; it is not bundled or activated by default.
 - Done 2026-09-22 (WP9): support follows the latest two major macOS releases, so the minimum is macOS 26, Apple silicon only. CI runs on hosted macOS 26 and the maintainer Mac runs macOS 27; see the support matrix in [BETA.md](BETA.md). The clean-device run is still part of the last gate below.
-- Under separate release authorization, configure Apple signing credentials securely and validate a candidate's nested app/CLI and outer DMG signatures, notarization/stapling, Gatekeeper behavior, source/toolchain/checksum lineage and final-artifact provenance.
+- Done 2026-09-23 (U2): the six Apple signing and notarization secrets that `beta-release.yml` references are provisioned in the `release` environment; names were confirmed and values are never recorded.
+- Under separate release authorization, validate a candidate's nested app/CLI and outer DMG signatures, notarization/stapling, Gatekeeper behavior, source/toolchain/checksum lineage and final-artifact provenance.
 - Verify a downloaded candidate on a clean device, including install, first launch, update, uninstall and data preservation. Retain results in the [public release checklist](PUBLIC_RELEASE_CHECKLIST.md); do not infer acceptance from successful build or upload.
 
 The work packages, sequence and acceptance evidence for these gates are in [MACOS-BETA-MILESTONE.md](MACOS-BETA-MILESTONE.md).
