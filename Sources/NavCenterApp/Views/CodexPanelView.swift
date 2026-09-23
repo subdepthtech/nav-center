@@ -128,7 +128,7 @@ struct CodexPanelView: View {
             inputFocused = true
             await store.refreshCodexStatus()
         }
-        .onChange(of: store.selectedPackage?.package.name) { _ in
+        .onChange(of: store.selectedPackage?.package.name) { _, _ in
             // Text typed before any package was open carries into a package without its own draft.
             let carried = draftPackageName == nil ? prompt : ""
             saveDraft()
@@ -243,7 +243,7 @@ struct CodexPanelView: View {
             .onAppear {
                 scrollToLatest(proxy)
             }
-            .onChange(of: store.codexMessages.count) { _ in
+            .onChange(of: store.codexMessages.count) { _, _ in
                 scrollToLatest(proxy)
             }
         }

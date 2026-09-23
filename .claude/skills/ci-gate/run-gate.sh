@@ -37,7 +37,7 @@ export NAV_CENTER_SKIP_VAULT_SYNC=1
 mkdir -p "$run_root/profraw"
 export LLVM_PROFILE_FILE="$run_root/profraw/%p.profraw"
 
-pinned_xcode=/Applications/Xcode_26.3.app/Contents/Developer
+pinned_xcode=/Applications/Xcode_26.6.app/Contents/Developer
 if [ -d "$pinned_xcode" ]; then
   export DEVELOPER_DIR="$pinned_xcode"
 fi

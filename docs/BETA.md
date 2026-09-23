@@ -4,7 +4,7 @@ Nav Center beta builds are local-first macOS builds for trusted testers. The app
 
 ## Install
 
-Apple silicon (arm64) only in this beta; Intel is not supported.
+macOS 26 or later, Apple silicon (arm64) only; Intel is not supported in this beta.
 
 Download the DMG and its `.sha256` from the GitHub prerelease, then verify the download:
 
@@ -40,6 +40,25 @@ backups/
 logs/
 feedback/
 ```
+
+## Support matrix
+
+### Advertised
+
+| Requirement | Support |
+| --- | --- |
+| macOS | macOS 26 or later: the latest two major macOS releases (26 and 27); the minimum moves up when a new major macOS ships |
+| Architecture | Apple silicon (arm64) only; Intel is not supported in this beta (U6) |
+| Distribution | GitHub prerelease DMG; Homebrew tap is an alternative (U4) |
+
+### Tested
+
+| OS / build | Arch | Toolchain | Date | Evidence |
+| --- | --- | --- | --- | --- |
+| Maintainer Mac: macOS 27.0 (26A428) | arm64 | Xcode 27 / Swift 6.4 | 2026-09-22 | Full suite (plain, address and thread sanitizers) and the real-tool lane at the macOS 26 target, commit `00ae54e`: [maintainer Mac verification](setup-evidence/beta-0.1.0-beta.1/maintainer-mac-verification.md) |
+| CI: GitHub macos-26, macOS 26.6.2 (25G83) | arm64 | Xcode 26.6 (17F113) / Swift 6.3.3 | Per PR; first run 2026-09-22 | Required "Build, test and release contracts" check; first run on this image: [run 35805836880](https://github.com/subdepthtech/nav-center/actions/runs/35805836880) |
+| Release build: GitHub macos-26 | arm64 | Xcode 26.6 | WP11, not run yet | `beta-release.yml` |
+| Clean Mac (WP12) | Pending | Pending | Pending | Pending |
 
 ## First Run
 

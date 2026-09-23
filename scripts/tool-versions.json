@@ -1,8 +1,9 @@
 {
   "app_version": "0.1.0-beta.1",
-  "xcode": "26.3",
-  "swift": "6.2.3",
-  "runner": "macos-15",
+  "minimum_macos": "26.0",
+  "xcode": "26.6",
+  "swift": "6.3.3",
+  "runner": "macos-26",
   "tools": {
     "gitleaks": {
       "version": "8.30.1",

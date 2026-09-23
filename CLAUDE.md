@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Nav Center is a native macOS (13+) SwiftUI app plus a CLI (`navcenterctl`) for reviewing local job-application packages, tracker status, and interview prep. It is local-only: no network service, no application submission. The only outbound traffic is the optional Codex panel (via the Codex CLI `app-server`) and explicit posting-URL capture. This is a public beta extraction of a private workflow; private resumes, tracker databases, and generated PDFs must never land in the repo (see `.gitignore` and `docs/PUBLIC_RELEASE_CHECKLIST.md`).
+Nav Center is a native macOS (26+) SwiftUI app plus a CLI (`navcenterctl`) for reviewing local job-application packages, tracker status, and interview prep. It is local-only: no network service, no application submission. The only outbound traffic is the optional Codex panel (via the Codex CLI `app-server`) and explicit posting-URL capture. This is a public beta extraction of a private workflow; private resumes, tracker databases, and generated PDFs must never land in the repo (see `.gitignore` and `docs/PUBLIC_RELEASE_CHECKLIST.md`).
 
 ## Commands
 

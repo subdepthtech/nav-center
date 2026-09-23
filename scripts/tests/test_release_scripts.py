@@ -435,7 +435,7 @@ class ReleaseScriptsTests(unittest.TestCase):
         self.assertIn('"~/Library/Application Support/Nav Center"', text)
         self.assertIn('"~/Library/Preferences/com.subdepthtech.navcenter.plist"', text)
         self.assertIn('"~/Library/Saved Application State/com.subdepthtech.navcenter.savedState"', text)
-        self.assertIn('depends_on macos: ">= :ventura"', text)
+        self.assertIn('depends_on macos: ">= :tahoe"', text)
         syntax = subprocess.run(["/usr/bin/ruby", "-c", str(path)], capture_output=True, text=True)
         self.assert_ok(syntax)
 
@@ -677,6 +677,41 @@ class ReleaseScriptsTests(unittest.TestCase):
         changelog = (REPO / "CHANGELOG.md").read_text().splitlines()
         headings = [line for line in changelog if line.startswith("## ")]
         self.assertRegex(headings[0], rf"^## {re.escape(app_version)}(\s|$)")
+
+    def test_minimum_macos_is_single_sourced(self):
+        versions = json.loads((REPO / "scripts/tool-versions.json").read_text())
+        minimum = versions["minimum_macos"]
+        major = int(minimum.split(".", 1)[0])
+        codenames = {13: "ventura", 14: "sonoma", 15: "sequoia", 26: "tahoe"}
+        self.assertIn(major, codenames)
+        self.assertIn(f'.macOS("{minimum}")', (REPO / "Package.swift").read_text())
+        self.assertIn(f'MIN_SYSTEM_VERSION="{minimum}"', (REPO / "scripts/build-and-run.sh").read_text())
+        self.assertIn(
+            f'depends_on macos: ">= :{codenames[major]}"',
+            (REPO / "scripts/update-homebrew-cask.sh").read_text(),
+        )
+        self.assertIn(f"macOS {major} or later (Apple silicon)", (REPO / "README.md").read_text())
+        self.assertIn(
+            f"macOS {major} or later, Apple silicon (arm64) only; Intel is not supported in this beta.",
+            (REPO / "docs/BETA.md").read_text(),
+        )
+
+    def test_workflows_use_the_single_sourced_runner_and_xcode(self):
+        versions = json.loads((REPO / "scripts/tool-versions.json").read_text())
+        xcode_path = f'/Applications/Xcode_{versions["xcode"]}.app/Contents/Developer'
+        expected_runners = {
+            "ci.yml": [versions["runner"], "ubuntu-24.04", versions["runner"]],
+            "beta-release.yml": [versions["runner"]],
+            "sonar.yml": [versions["runner"]],
+        }
+        expected_xcode_pins = {"ci.yml": 2, "beta-release.yml": 1, "sonar.yml": 0}
+        for name in ("ci.yml", "beta-release.yml", "sonar.yml"):
+            with self.subTest(workflow=name):
+                workflow = (REPO / ".github/workflows" / name).read_text()
+                runners = re.findall(r"^\s*runs-on:\s*(\S+)", workflow, re.MULTILINE)
+                self.assertEqual(runners, expected_runners[name])
+                developer_dirs = re.findall(r"^\s*DEVELOPER_DIR:\s*(\S+)", workflow, re.MULTILINE)
+                self.assertEqual(developer_dirs, [xcode_path] * expected_xcode_pins[name])
 
 
 class VendorNoticeTests(unittest.TestCase):

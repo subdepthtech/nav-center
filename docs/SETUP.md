@@ -57,8 +57,8 @@ Development checks do not complete these acceptance gates:
 
 - Exercise the native GUI with a disposable workspace: first-use setup, create/edit/save, tracker updates, cleanup/recovery and meaningful error states. Verify keyboard and VoiceOver accessibility. Model tests and a short launch smoke are insufficient.
 - Extend the successful synthetic export smoke to representative Unicode, layout and error cases. Verify a reviewed installed ATS executable and a live signed-in Codex session with package-edit confirmation separately. Standard native tests still skip the opt-in installed Chrome and two ATS tests unless explicitly configured; the separate export smoke does not replace those tests. Preserve skipped or unavailable evidence.
-- Complete the frozen ATS snapshot's missing standalone license/attribution notice before distribution. Keep its manifest and dependency boundary intact; it is not bundled or activated by default.
-- Select and test the supported macOS and architecture matrix. The declared macOS 13 minimum is not established by local macOS 27 or hosted macOS 15 results.
+- Done 2026-09-22 (#19): the frozen ATS snapshot's license notice is complete (MIT, confirmed by the holder) in `THIRD_PARTY_NOTICES.md`. Keep its manifest and dependency boundary intact; it is not bundled or activated by default.
+- Done 2026-09-22 (WP9): support follows the latest two major macOS releases, so the minimum is macOS 26, Apple silicon only. CI runs on hosted macOS 26 and the maintainer Mac runs macOS 27; see the support matrix in [BETA.md](BETA.md). The clean-device run is still part of the last gate below.
 - Under separate release authorization, configure Apple signing credentials securely and validate a candidate's nested app/CLI and outer DMG signatures, notarization/stapling, Gatekeeper behavior, source/toolchain/checksum lineage and final-artifact provenance.
 - Verify a downloaded candidate on a clean device, including install, first launch, update, uninstall and data preservation. Retain results in the [public release checklist](PUBLIC_RELEASE_CHECKLIST.md); do not infer acceptance from successful build or upload.
 

@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "NavCenter",
     platforms: [
-        .macOS(.v13)
+        .macOS("26.0")
     ],
     products: [
         .library(name: "NavCenterCore", targets: ["NavCenterCore"]),
