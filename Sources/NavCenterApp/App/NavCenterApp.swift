@@ -90,8 +90,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Set before SwiftUI creates the first window so no tab bar can open a second one.
         NSWindow.allowsAutomaticWindowTabbing = false
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }

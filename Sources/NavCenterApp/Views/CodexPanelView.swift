@@ -129,9 +129,12 @@ struct CodexPanelView: View {
             await store.refreshCodexStatus()
         }
         .onChange(of: store.selectedPackage?.package.name) { _ in
+            // Text typed before any package was open carries into a package without its own draft.
+            let carried = draftPackageName == nil ? prompt : ""
             saveDraft()
             draftPackageName = store.selectedPackage?.package.name
-            prompt = store.codexDraft(for: draftPackageName)
+            let stored = store.codexDraft(for: draftPackageName)
+            prompt = stored.isEmpty && !carried.isEmpty ? carried : stored
             confirmedEdits = false
             allowEdits = false
         }
