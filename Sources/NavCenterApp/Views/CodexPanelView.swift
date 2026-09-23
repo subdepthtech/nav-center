@@ -56,7 +56,6 @@ struct CodexPanelView: View {
     @Binding var isPresented: Bool
     var panelHeight: CGFloat
     @FocusState private var inputFocused: Bool
-    @State private var prompt = ""
     @State private var allowEdits = false
     @State private var confirmedEdits = false
 
@@ -76,6 +75,17 @@ struct CodexPanelView: View {
             && store.codexStatus?.account != nil
             && !store.isCodexLoading
             && (!allowEdits || confirmedEdits)
+    }
+
+    private var prompt: String {
+        store.codexDrafts[store.selectedPackage?.package.name ?? ""] ?? ""
+    }
+
+    private var promptBinding: Binding<String> {
+        Binding(
+            get: { prompt },
+            set: { store.codexDrafts[store.selectedPackage?.package.name ?? ""] = $0 }
+        )
     }
 
     private var selectedPackageLabel: String {
@@ -267,7 +277,7 @@ struct CodexPanelView: View {
                     .lineLimit(1)
             }
 
-            TextEditor(text: $prompt)
+            TextEditor(text: promptBinding)
                 .focused($inputFocused)
                 .accessibilityIdentifier(AccessibilityID.codexInput)
                 .accessibilityLabel("Message to Codex")
@@ -302,7 +312,7 @@ struct CodexPanelView: View {
                     let editsAllowed = allowEdits
                     let editsConfirmed = confirmedEdits
                     let packageName = store.selectedPackage?.package.name
-                    prompt = ""
+                    store.codexDrafts[packageName ?? ""] = ""
                     confirmedEdits = false
                     Task {
                         await store.sendCodexMessage(message, allowEdits: editsAllowed, confirmed: editsConfirmed, packageName: packageName)

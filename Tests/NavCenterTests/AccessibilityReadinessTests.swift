@@ -34,25 +34,43 @@ final class AccessibilityReadinessTests: XCTestCase {
         }
     }
 
+    func testKeyedIdentifiersSanitizeAndStayNamespaced() {
+        XCTAssertEqual(AccessibilityID.applicationsOpen("Acme/Role_1"), "applications.open.Acme-Role-1")
+        XCTAssertEqual(AccessibilityID.applicationsStatus(.allCases[0], packageName: "A B"),
+                       "\(AccessibilityID.applicationsStatus(.allCases[0])).A-B")
+        XCTAssertEqual(AccessibilityID.packageFilePreview("artifacts/Resume_1.pdf"),
+                       "package.file.preview.artifacts-Resume-1-pdf")
+        XCTAssertEqual(AccessibilityID.packageFileOpen("a/b"), "package.file.open.a-b")
+        XCTAssertEqual(AccessibilityID.packageFileReveal("a/b"), "package.file.reveal.a-b")
+    }
+
     func testKeyboardShortcutsAreUniqueAndAvoidReservedSystemKeys() {
         let shortcuts = KeyboardShortcutRegistry.registered
         let combinations = shortcuts.map { "\($0.modifiers.rawValue):\($0.key.lowercased())" }
         XCTAssertEqual(Set(combinations).count, combinations.count)
-        let reserved: Set<String> = ["q", "w", "h", "m", "n", "o", "p", "s", "z", "x", "c", "v", "a", "`", "tab"]
-        for shortcut in shortcuts where shortcut.modifiers == .command {
-            XCTAssertFalse(reserved.contains(shortcut.key.lowercased()), shortcut.title)
+        let reserved: [(KeyEquivalent, EventModifiers)] =
+            ["q", "w", "h", "m", "n", "o", "p", "s", "z", "x", "c", "v", "a", "`"].map {
+                (KeyEquivalent($0.first!), .command)
+            } + [(.tab, .command)]
+        for shortcut in shortcuts {
+            XCTAssertFalse(reserved.contains { key, modifiers in
+                key == KeyEquivalent(shortcut.key.lowercased().first!) && modifiers == shortcut.modifiers
+            }, shortcut.title)
         }
         XCTAssertEqual(shortcuts.filter { $0.key == "," }.map(\.title), ["Settings…"])
-        XCTAssertTrue(shortcuts.allSatisfy { !$0.identifier.hasPrefix("package.status.") && !$0.identifier.hasPrefix("applications.status.") })
+        let trackerTitles = Set(TrackerStatusQuickAction.allCases.map(\.title))
+        XCTAssertTrue(shortcuts.allSatisfy { !trackerTitles.contains($0.title) })
     }
 
     func testReviewWorkspaceMinimumHeightFitsMinimumWindow() {
-        XCTAssertLessThan(LayoutMetrics.reviewPaneMinimumHeight, LayoutMetrics.minimumWindowSize.height)
+        XCTAssertGreaterThanOrEqual(LayoutMetrics.minimumWindowSize.height - LayoutMetrics.detailChromeHeight,
+                                    LayoutMetrics.reviewPaneMinimumHeight(fillingAvailableHeight: true))
+        XCTAssertEqual(LayoutMetrics.reviewPaneMinimumHeight(fillingAvailableHeight: false), 480)
     }
 
     func testCodexPanelFitsMinimumWindow() {
         let height = LayoutMetrics.codexPanelHeight(forWindowHeight: LayoutMetrics.minimumWindowSize.height)
-        XCTAssertLessThanOrEqual(height + 124, LayoutMetrics.minimumWindowSize.height)
+        XCTAssertLessThanOrEqual(height + 58 + 12 + 44, LayoutMetrics.minimumWindowSize.height)
         XCTAssertGreaterThanOrEqual(height, 320)
     }
 }

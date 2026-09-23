@@ -176,12 +176,12 @@ Run this checklist once on the beta candidate on a Mac with VoiceOver and a disp
 | ⌘7 Settings | Opens Settings and closes package detail. |  |
 | ⌘, Settings | Opens the Settings destination in the same window. |  |
 | ⌘[ Back to List | Closes package detail; unavailable without an open package. |  |
-| ⌘F Find | Focuses the toolbar application search. |  |
+| ⇧⌘F Search Applications | Focuses the toolbar application search. |  |
 | ⌘⇧C Toggle Codex Panel | Opens or closes the panel; input is focused on open. |  |
 | ⌘⇧A Run ATS Scan… | Opens the package rail confirmation and focuses its primary button; does not run the scan. |  |
 | ⌘⇧E Export Artifacts… | Opens the package rail confirmation and focuses its primary button; does not export. |  |
 | ⌘R Refresh Dashboard | Refreshes local dashboard data. |  |
 | Help → Copy Redacted Diagnostics | Copies redacted JSON and shows a transient confirmation; no private workspace path or document contents appear. |  |
-| 820×620 minimum window | Review pane and Codex panel remain visible without clipping; scrollable content stays reachable. |  |
+| 820×620 minimum window | Review pane and Codex panel remain visible without clipping; scrollable content stays reachable. The on-screen check is the authority. |  |
 | Reduce Motion | Codex open and close remain usable with reduced animation. |  |
 | Full Keyboard Access | Every actionable control, including menus, sheets, and icon buttons, can be reached and operated. |  |

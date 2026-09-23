@@ -19,6 +19,20 @@ import enum NavCenterCore.NavCenterError
 
 final class UXReadinessTests: XCTestCase {
     @MainActor
+    func testCodexDraftSurvivesPanelAndPackageChanges() async {
+        let store = DashboardStore(service: UXTestService())
+        await store.loadPackage(named: "A")
+        store.codexDrafts["A"] = "Unsent prompt"
+        store.isCodexPanelPresented = true
+        store.isCodexPanelPresented = false
+        store.closePackage()
+        await store.loadPackage(named: "B")
+        XCTAssertNil(store.codexDrafts["B"])
+        await store.loadPackage(named: "A")
+        XCTAssertEqual(store.codexDrafts["A"], "Unsent prompt")
+    }
+
+    @MainActor
     func testLateCodexReplyStaysWithOriginalPackageAndThread() async throws {
         let service = UXTestService()
         let store = DashboardStore(service: service)

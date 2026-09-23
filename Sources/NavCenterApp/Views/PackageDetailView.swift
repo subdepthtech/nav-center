@@ -15,6 +15,8 @@ private enum PackageDetailLayout {
 struct PackageDetailView: View {
     @EnvironmentObject private var store: DashboardStore
     @State private var pendingAction: PackageAction?
+    var isSearchFocused: Bool = false
+    var unfocusSearch: () -> Void = {}
 
     var body: some View {
         guard let payload = store.selectedPackage else {
@@ -45,16 +47,26 @@ struct PackageDetailView: View {
                         .frame(width: proxy.size.width, height: proxy.size.height)
                 }
             }
-            .onChange(of: payload.package.name) { _ in pendingAction = nil }
-            .onChange(of: store.requestedRailAction) { action in
-                guard let action else { return }
-                if store.selectedPackage != nil && action.availability(store.toolAvailability).enabled { pendingAction = action }
+            .onAppear { applyRequestedRailAction() }
+            .onChange(of: payload.package.name) { _ in
+                pendingAction = nil
                 store.requestedRailAction = nil
             }
+            .onChange(of: store.requestedRailAction) { _ in applyRequestedRailAction() }
             .onExitCommand {
-                if !store.isCodexPanelPresented { store.closePackage() }
+                if pendingAction != nil { pendingAction = nil }
+                else if isSearchFocused { unfocusSearch() }
+                else if !store.isCodexPanelPresented { store.closePackage() }
             }
         )
+    }
+
+    private func applyRequestedRailAction() {
+        guard let action = store.requestedRailAction else { return }
+        if store.selectedPackage != nil && !store.isRunningAction && action.availability(store.toolAvailability).enabled {
+            pendingAction = action
+        }
+        store.requestedRailAction = nil
     }
 
     private func compactLayout(payload: PackageResponse) -> some View {
@@ -277,7 +289,7 @@ private struct ReviewWorkspace: View {
             }
         }
         .frame(
-            minHeight: fillAvailableHeight ? 420 : LayoutMetrics.reviewPaneMinimumHeight,
+            minHeight: LayoutMetrics.reviewPaneMinimumHeight(fillingAvailableHeight: fillAvailableHeight),
             maxHeight: fillAvailableHeight ? .infinity : nil
         )
         .layoutPriority(fillAvailableHeight ? 1 : 0)
@@ -288,7 +300,8 @@ private struct ReviewWorkspace: View {
             title: "Resume",
             subtitle: resumeSource?.relativePath ?? resumeHTML?.relativePath ?? "Package file missing",
             mode: $resumeMode,
-            modes: [("pdf", resumePDF == nil ? "Source Preview" : "PDF"), ("markdown", "Markdown")]
+            modes: [("pdf", resumePDF == nil ? "Source Preview" : "PDF"), ("markdown", "Markdown")],
+            modeIdentifier: AccessibilityID.packageReviewModePrimary
         ) {
             if resumeMode == "pdf", resumePDF != nil {
                 RawDocumentPreview(
@@ -296,10 +309,10 @@ private struct ReviewWorkspace: View {
                     openPDFFile: resumePDF,
                     fallbackMessage: "No generated resume preview found yet."
                 )
-                    .frame(minHeight: 420, maxHeight: .infinity)
+                    .frame(minHeight: fillAvailableHeight ? 200 : 420, maxHeight: .infinity)
             } else if let resumeSource {
                 FileTextPreview(file: resumeSource, rendered: resumeMode == "pdf", loadOnAppear: true)
-                    .frame(minHeight: 420, maxHeight: .infinity)
+                    .frame(minHeight: fillAvailableHeight ? 200 : 420, maxHeight: .infinity)
             } else {
                 EmptyStateView(title: "No resume source", message: "No Resume_*.md source file found in this package.")
             }
@@ -311,11 +324,12 @@ private struct ReviewWorkspace: View {
             title: "Job Description",
             subtitle: posting?.relativePath ?? "Package file missing",
             mode: $postingMode,
-            modes: [("preview", "Preview"), ("markdown", "Markdown")]
+            modes: [("preview", "Preview"), ("markdown", "Markdown")],
+            modeIdentifier: AccessibilityID.packageReviewModeSecondary
         ) {
             if let posting {
                 FileTextPreview(file: posting, rendered: postingMode == "preview", loadOnAppear: true)
-                    .frame(minHeight: 420, maxHeight: .infinity)
+                    .frame(minHeight: fillAvailableHeight ? 200 : 420, maxHeight: .infinity)
             } else {
                 EmptyStateView(title: "No posting", message: "No posting.md found in this package.")
             }
@@ -328,6 +342,7 @@ private struct ReviewPane<Content: View>: View {
     var subtitle: String
     @Binding var mode: String
     var modes: [(id: String, label: String)]
+    var modeIdentifier: String
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -380,7 +395,7 @@ private struct ReviewPane<Content: View>: View {
             }
         }
         .labelsHidden()
-        .accessibilityIdentifier(AccessibilityID.packageReviewMode)
+        .accessibilityIdentifier(modeIdentifier)
         .accessibilityLabel("\(title) view mode")
         .pickerStyle(.segmented)
         .frame(maxWidth: 190)
@@ -662,14 +677,14 @@ private struct FileCard: View {
                     store.filePreviewCache[file.relativePath] = nil
                     Task { await store.loadFilePreview(file) }
                 }
-                .accessibilityIdentifier(AccessibilityID.packageFilePreview)
+                .accessibilityIdentifier(AccessibilityID.packageFilePreview(file.relativePath))
                 .disabled(store.isFilePreviewLoading(file))
             } else {
                 HStack {
                     Button("Open \(file.format.uppercased())") { openArtifact(reveal: false) }
-                        .accessibilityIdentifier(AccessibilityID.packageFileOpen)
+                        .accessibilityIdentifier(AccessibilityID.packageFileOpen(file.relativePath))
                     Button("Reveal in Finder") { openArtifact(reveal: true) }
-                        .accessibilityIdentifier(AccessibilityID.packageFileReveal)
+                        .accessibilityIdentifier(AccessibilityID.packageFileReveal(file.relativePath))
                 }
                 .accessibilityElement(children: .contain)
             }
@@ -749,7 +764,7 @@ private struct FileTextPreview: View {
                     Button("Load Preview") {
                         Task { await store.loadFilePreview(file) }
                     }
-                    .accessibilityIdentifier(AccessibilityID.packageFilePreview)
+                    .accessibilityIdentifier(AccessibilityID.packageFilePreview(file.relativePath))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -1152,6 +1167,7 @@ private struct PackageRailContent: View {
                                 self.pendingAction = nil
                             }
                             .accessibilityIdentifier(AccessibilityID.packageRailCancel)
+                            .keyboardShortcut(.cancelAction)
                         }
                     }
                     .padding(12)

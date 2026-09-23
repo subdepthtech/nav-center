@@ -442,7 +442,7 @@ private struct ApplicationTableRow: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
             .disabled(application.packageName.isEmpty)
-            .accessibilityIdentifier(AccessibilityID.applicationsOpen)
+            .accessibilityIdentifier(AccessibilityID.applicationsOpen(application.packageName.isEmpty ? application.id : application.packageName))
             .accessibilityLabel("Open package")
             .help(application.packageName.isEmpty ? "No local package is available for this application." : "Open Package Detail")
         }
@@ -537,7 +537,7 @@ private struct ApplicationCompactCard: View {
         }
         .buttonStyle(.bordered)
         .disabled(application.packageName.isEmpty)
-        .accessibilityIdentifier(AccessibilityID.applicationsOpen)
+        .accessibilityIdentifier(AccessibilityID.applicationsOpen(application.packageName.isEmpty ? application.id : application.packageName))
         .help(application.packageName.isEmpty ? "No local package is available for this application." : "Open Package Detail")
     }
 }
@@ -559,7 +559,7 @@ private struct StatusActionButtons: View {
                 .buttonStyle(.bordered)
                 .controlSize(controlSize)
                 .disabled(store.isUpdatingStatus || application.packageName.isEmpty)
-                .accessibilityIdentifier(AccessibilityID.applicationsStatus(action))
+                .accessibilityIdentifier(AccessibilityID.applicationsStatus(action, packageName: application.packageName.isEmpty ? application.id : application.packageName))
                 .accessibilityLabel(action.title)
                 .help(action.help)
             }

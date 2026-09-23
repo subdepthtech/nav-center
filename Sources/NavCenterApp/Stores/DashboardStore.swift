@@ -108,6 +108,7 @@ final class DashboardStore: ObservableObject {
     @Published var dataWarningMessage: String?
     @Published var requestedDestination: DashboardDestination?
     @Published var isCodexPanelPresented = false
+    @Published var codexDrafts: [String: String] = [:]
     @Published var requestedRailAction: PackageAction?
     @Published var searchFocusRequest = 0
     @Published var noticeMessage: String?

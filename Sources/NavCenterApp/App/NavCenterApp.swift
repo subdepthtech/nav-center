@@ -7,7 +7,7 @@ struct NavCenterApp: App {
     @StateObject private var store = DashboardStore()
 
     var body: some Scene {
-        WindowGroup("Nav Center") {
+        Window("Nav Center", id: "main") {
             ContentView()
                 .environmentObject(store)
                 .frame(minWidth: LayoutMetrics.minimumWindowSize.width, minHeight: LayoutMetrics.minimumWindowSize.height)
@@ -16,42 +16,48 @@ struct NavCenterApp: App {
                     await store.bootstrap()
                 }
         }
-        .commands {
-            CommandGroup(after: .appInfo) {
-                Button(KeyboardShortcutRegistry.refresh.title) {
-                    Task { await store.refresh() }
-                }
-                .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.refresh.key.first!), modifiers: KeyboardShortcutRegistry.refresh.modifiers)
+        .commands { NavCenterCommands(store: store) }
+    }
+}
+
+struct NavCenterCommands: Commands {
+    @ObservedObject var store: DashboardStore
+
+    var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button(KeyboardShortcutRegistry.refresh.title) {
+                Task { await store.refresh() }
             }
-            CommandMenu("Go") {
-                ForEach(Array(DashboardDestination.allCases.enumerated()), id: \.element.id) { index, destination in
-                    Button(destination.title) { store.requestedDestination = destination }
-                        .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.destinations[index].key.first!), modifiers: .command)
-                }
-                Divider()
-                Button(KeyboardShortcutRegistry.back.title) { store.closePackage() }
-                    .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.back.key.first!), modifiers: KeyboardShortcutRegistry.back.modifiers)
-                    .disabled(store.selectedPackage == nil)
-                Button(KeyboardShortcutRegistry.find.title) { store.searchFocusRequest += 1 }
-                    .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.find.key.first!), modifiers: KeyboardShortcutRegistry.find.modifiers)
-                Button(KeyboardShortcutRegistry.codex.title) { store.isCodexPanelPresented.toggle() }
-                    .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.codex.key.first!), modifiers: KeyboardShortcutRegistry.codex.modifiers)
-                Divider()
-                Button(KeyboardShortcutRegistry.ats.title) { store.requestedRailAction = .atsScan }
-                    .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.ats.key.first!), modifiers: KeyboardShortcutRegistry.ats.modifiers)
-                    .disabled(store.selectedPackage == nil)
-                Button(KeyboardShortcutRegistry.export.title) { store.requestedRailAction = .exportArtifacts }
-                    .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.export.key.first!), modifiers: KeyboardShortcutRegistry.export.modifiers)
-                    .disabled(store.selectedPackage == nil)
+            .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.refresh.key.first!), modifiers: KeyboardShortcutRegistry.refresh.modifiers)
+        }
+        CommandMenu("Go") {
+            ForEach(Array(DashboardDestination.allCases.enumerated()), id: \.element.id) { index, destination in
+                Button(KeyboardShortcutRegistry.destinations[index].title) { store.requestedDestination = destination }
+                    .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.destinations[index].key.first!), modifiers: KeyboardShortcutRegistry.destinations[index].modifiers)
             }
-            CommandGroup(replacing: .appSettings) {
-                Button(KeyboardShortcutRegistry.settings.title) { store.requestedDestination = .settings }
-                    .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.settings.key.first!), modifiers: KeyboardShortcutRegistry.settings.modifiers)
-            }
-            CommandGroup(after: .help) {
-                Button("Copy Redacted Diagnostics") {
-                    Task { await store.copyRedactedDiagnostics() }
-                }
+            Divider()
+            Button(KeyboardShortcutRegistry.back.title) { store.closePackage() }
+                .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.back.key.first!), modifiers: KeyboardShortcutRegistry.back.modifiers)
+                .disabled(store.selectedPackage == nil)
+            Button(KeyboardShortcutRegistry.find.title) { store.searchFocusRequest += 1 }
+                .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.find.key.first!), modifiers: KeyboardShortcutRegistry.find.modifiers)
+            Button(KeyboardShortcutRegistry.codex.title) { store.isCodexPanelPresented.toggle() }
+                .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.codex.key.first!), modifiers: KeyboardShortcutRegistry.codex.modifiers)
+            Divider()
+            Button(KeyboardShortcutRegistry.ats.title) { store.requestedRailAction = .atsScan }
+                .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.ats.key.first!), modifiers: KeyboardShortcutRegistry.ats.modifiers)
+                .disabled(store.selectedPackage == nil || store.isRunningAction)
+            Button(KeyboardShortcutRegistry.export.title) { store.requestedRailAction = .exportArtifacts }
+                .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.export.key.first!), modifiers: KeyboardShortcutRegistry.export.modifiers)
+                .disabled(store.selectedPackage == nil || store.isRunningAction || !PackageAction.exportArtifacts.availability(store.toolAvailability).enabled)
+        }
+        CommandGroup(replacing: .appSettings) {
+            Button(KeyboardShortcutRegistry.settings.title) { store.requestedDestination = .settings }
+                .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.settings.key.first!), modifiers: KeyboardShortcutRegistry.settings.modifiers)
+        }
+        CommandGroup(after: .help) {
+            Button("Copy Redacted Diagnostics") {
+                Task { await store.copyRedactedDiagnostics() }
             }
         }
     }

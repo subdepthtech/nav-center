@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var selection: DashboardDestination = .overview
     @FocusState private var searchFocused: Bool
     @State private var noticeDismissal: Task<Void, Never>?
+    @State private var availableHeight: CGFloat = LayoutMetrics.minimumWindowSize.height
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -33,7 +34,7 @@ struct ContentView: View {
             } detail: {
                 ZStack {
                     if store.selectedPackage != nil {
-                        PackageDetailView()
+                        PackageDetailView(isSearchFocused: searchFocused, unfocusSearch: { searchFocused = false })
                     } else {
                         switch selection {
                         case .overview:
@@ -97,21 +98,30 @@ struct ContentView: View {
                 }
             }
 
-            GeometryReader { proxy in
-                CodexChatLauncher(isPresented: $store.isCodexPanelPresented, windowHeight: proxy.size.height)
-                    .environmentObject(store)
-                    .padding(22)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-            }
-            .zIndex(1)
+            CodexChatLauncher(isPresented: $store.isCodexPanelPresented, windowHeight: availableHeight)
+                .environmentObject(store)
+                .padding(22)
+                .zIndex(1)
         }
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(key: AvailableHeightKey.self, value: proxy.size.height)
+            }
+        }
+        .onPreferenceChange(AvailableHeightKey.self) { availableHeight = $0 }
+        .onAppear { applyRequestedDestination() }
         .onChange(of: store.requestedDestination) { _ in
-            if let destination = store.applyRequestedDestination() { selection = destination }
+            applyRequestedDestination()
         }
         .onChange(of: store.searchFocusRequest) { _ in searchFocused = true }
         .onChange(of: store.noticeMessage) { message in
             noticeDismissal?.cancel()
-            guard message != nil else { return }
+            guard let message else { return }
+            NSAccessibility.post(
+                element: NSApp as Any,
+                notification: .announcementRequested,
+                userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.high.rawValue]
+            )
             noticeDismissal = Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
                 if !Task.isCancelled { store.noticeMessage = nil }
@@ -122,11 +132,19 @@ struct ContentView: View {
                 HStack {
                     Text(message)
                     Button("Dismiss") { store.noticeMessage = nil }
-                        .accessibilityIdentifier(AccessibilityID.statusBannerDismiss)
+                        .accessibilityIdentifier(AccessibilityID.noticeBannerDismiss)
                         .help("Dismiss diagnostics notice")
                 }
                 .padding(12)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .background {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(nsColor: .windowBackgroundColor))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
+                        }
+                }
+                .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
                 .padding()
             }
         }
@@ -144,6 +162,10 @@ struct ContentView: View {
         )
     }
 
+    private func applyRequestedDestination() {
+        if let destination = store.applyRequestedDestination() { selection = destination }
+    }
+
     private var sidebarSelection: Binding<DashboardDestination> {
         Binding(
             get: { selection },
@@ -153,6 +175,11 @@ struct ContentView: View {
             }
         )
     }
+}
+
+private struct AvailableHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = LayoutMetrics.minimumWindowSize.height
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 private struct PackagesWorkspaceView: View {
@@ -484,7 +511,7 @@ private struct JobDescriptionPastePanel: View {
                             } label: {
                                 Label("Sign In", systemImage: "person.crop.circle.badge.checkmark")
                             }
-                            .accessibilityIdentifier(AccessibilityID.codexSignIn)
+                            .accessibilityIdentifier(AccessibilityID.intakeCodexSignIn)
                             .disabled(store.isCodexLoading)
                         }
 
@@ -507,7 +534,7 @@ private struct JobDescriptionPastePanel: View {
                                 } label: {
                                     Label("Open", systemImage: "arrow.up.right.square")
                                 }
-                                .accessibilityIdentifier(AccessibilityID.codexLoginOpen)
+                                .accessibilityIdentifier(AccessibilityID.intakeCodexLoginOpen)
                             }
                         }
                     }
@@ -685,7 +712,7 @@ private struct PackageListRow: View {
             Button("Open") {
                 Task { await store.openPackage(for: application) }
             }
-            .accessibilityIdentifier(AccessibilityID.applicationsOpen)
+            .accessibilityIdentifier(AccessibilityID.applicationsOpen(application.packageName))
             .disabled(application.packageName.isEmpty)
         }
     }
