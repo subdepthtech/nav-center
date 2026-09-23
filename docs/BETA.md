@@ -55,7 +55,7 @@ feedback/
 
 | OS / build | Arch | Toolchain | Date | Evidence |
 | --- | --- | --- | --- | --- |
-| Maintainer Mac: macOS 27.0 (26A428) | arm64 | Xcode 27 / Swift 6.4 | 2026-09-22 | Full suite (268 tests; plain, address and thread sanitizers) at the WP9 commit with the macOS 26 target; real-tool lane at `7ee73a7`, before the target change: [integration acceptance](setup-evidence/beta-0.1.0-beta.1/integration-acceptance.md) |
+| Maintainer Mac: macOS 27.0 (26A428) | arm64 | Xcode 27 / Swift 6.4 | 2026-09-22 | Full suite (plain, address and thread sanitizers) and the real-tool lane at the macOS 26 target, commit `00ae54e`: [maintainer Mac verification](setup-evidence/beta-0.1.0-beta.1/maintainer-mac-verification.md) |
 | CI: GitHub macos-26, macOS 26.6.2 (25G83) | arm64 | Xcode 26.6 (17F113) / Swift 6.3.3 | Per PR; first run 2026-09-22 | Required "Build, test and release contracts" check; first run on this image: [run 35805836880](https://github.com/subdepthtech/nav-center/actions/runs/35805836880) |
 | Release build: GitHub macos-26 | arm64 | Xcode 26.6 | WP11, not run yet | `beta-release.yml` |
 | Clean Mac (WP12) | Pending | Pending | Pending | Pending |
