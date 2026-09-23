@@ -113,7 +113,7 @@ enum AccessibilityID {
 
 enum LayoutMetrics {
     static let minimumWindowSize = CGSize(width: 820, height: 620)
-    static let detailChromeHeight: CGFloat = 250
+    static let detailChromeHeight: CGFloat = 330
     static func reviewPaneMinimumHeight(fillingAvailableHeight: Bool) -> CGFloat {
         fillingAvailableHeight ? 280 : 480
     }

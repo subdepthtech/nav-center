@@ -183,5 +183,8 @@ Run this checklist once on the beta candidate on a Mac with VoiceOver and a disp
 | ⌘R Refresh Dashboard | Refreshes local dashboard data. |  |
 | Help → Copy Redacted Diagnostics | Copies redacted JSON and shows a transient confirmation; no private workspace path or document contents appear. |  |
 | 820×620 minimum window | Review pane and Codex panel remain visible without clipping; scrollable content stays reachable. The on-screen check is the authority. |  |
+| Close and reopen window | Closing the window leaves the app running; clicking its Dock icon reopens a window. |  |
+| Single window controls | File has no New Window item; no tab bar or plus control can open a second window. |  |
+| Quit with unsaved master-resume edits | Quit prompts to save or discard; Cancel keeps the app running with the edits. |  |
 | Reduce Motion | Codex open and close remain usable with reduced animation. |  |
 | Full Keyboard Access | Every actionable control, including menus, sheets, and icon buttons, can be reached and operated. |  |

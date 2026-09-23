@@ -118,6 +118,20 @@ final class DashboardStore: ObservableObject {
         masterResumeContent != (masterResumeSnapshot?.content ?? "")
     }
 
+    func codexDraft(for packageName: String?) -> String {
+        guard let packageName else { return "" }
+        return codexDrafts[packageName] ?? ""
+    }
+
+    func saveCodexDraft(_ draft: String, for packageName: String?) {
+        guard let packageName else { return }
+        if draft.isEmpty {
+            codexDrafts.removeValue(forKey: packageName)
+        } else if codexDrafts[packageName] != draft {
+            codexDrafts[packageName] = draft
+        }
+    }
+
     let appVersion: String = FeedbackDiagnostics.buildVersion
     private let service: DashboardServicing
     private let pasteboardWriter: (String) -> Void

@@ -34,7 +34,7 @@ struct ContentView: View {
             } detail: {
                 ZStack {
                     if store.selectedPackage != nil {
-                        PackageDetailView(isSearchFocused: searchFocused, unfocusSearch: { searchFocused = false })
+                        PackageDetailView()
                     } else {
                         switch selection {
                         case .overview:
@@ -65,6 +65,7 @@ struct ContentView: View {
                         TextField("Search applications", text: $store.applicationSearch)
                             .textFieldStyle(.roundedBorder)
                             .focused($searchFocused)
+                            .onExitCommand { searchFocused = false }
                             .accessibilityIdentifier(AccessibilityID.toolbarSearch)
                             .accessibilityLabel("Search applications")
                             .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
@@ -712,7 +713,7 @@ private struct PackageListRow: View {
             Button("Open") {
                 Task { await store.openPackage(for: application) }
             }
-            .accessibilityIdentifier(AccessibilityID.applicationsOpen(application.packageName))
+            .accessibilityIdentifier(AccessibilityID.applicationsOpen(application.packageName.isEmpty ? application.id : application.packageName))
             .disabled(application.packageName.isEmpty)
         }
     }

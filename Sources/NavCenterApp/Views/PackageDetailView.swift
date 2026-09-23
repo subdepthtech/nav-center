@@ -15,8 +15,6 @@ private enum PackageDetailLayout {
 struct PackageDetailView: View {
     @EnvironmentObject private var store: DashboardStore
     @State private var pendingAction: PackageAction?
-    var isSearchFocused: Bool = false
-    var unfocusSearch: () -> Void = {}
 
     var body: some View {
         guard let payload = store.selectedPackage else {
@@ -54,9 +52,9 @@ struct PackageDetailView: View {
             }
             .onChange(of: store.requestedRailAction) { _ in applyRequestedRailAction() }
             .onExitCommand {
+                guard !store.isCodexPanelPresented else { return }
                 if pendingAction != nil { pendingAction = nil }
-                else if isSearchFocused { unfocusSearch() }
-                else if !store.isCodexPanelPresented { store.closePackage() }
+                else { store.closePackage() }
             }
         )
     }
@@ -1163,11 +1161,7 @@ private struct PackageRailContent: View {
                             .focused($confirmFocused)
                             .accessibilityIdentifier(AccessibilityID.packageRailConfirm)
 
-                            Button("Cancel") {
-                                self.pendingAction = nil
-                            }
-                            .accessibilityIdentifier(AccessibilityID.packageRailCancel)
-                            .keyboardShortcut(.cancelAction)
+                            confirmationCancelButton
                         }
                     }
                     .padding(12)
@@ -1217,6 +1211,18 @@ private struct PackageRailContent: View {
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var confirmationCancelButton: some View {
+        if store.isCodexPanelPresented {
+            Button("Cancel") { pendingAction = nil }
+                .accessibilityIdentifier(AccessibilityID.packageRailCancel)
+        } else {
+            Button("Cancel") { pendingAction = nil }
+                .accessibilityIdentifier(AccessibilityID.packageRailCancel)
+                .keyboardShortcut(.cancelAction)
         }
     }
 }

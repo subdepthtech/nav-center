@@ -7,7 +7,7 @@ struct NavCenterApp: App {
     @StateObject private var store = DashboardStore()
 
     var body: some Scene {
-        Window("Nav Center", id: "main") {
+        WindowGroup("Nav Center") {
             ContentView()
                 .environmentObject(store)
                 .frame(minWidth: LayoutMetrics.minimumWindowSize.width, minHeight: LayoutMetrics.minimumWindowSize.height)
@@ -24,6 +24,7 @@ struct NavCenterCommands: Commands {
     @ObservedObject var store: DashboardStore
 
     var body: some Commands {
+        CommandGroup(replacing: .newItem) { }
         CommandGroup(after: .appInfo) {
             Button(KeyboardShortcutRegistry.refresh.title) {
                 Task { await store.refresh() }
@@ -90,6 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = false
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }

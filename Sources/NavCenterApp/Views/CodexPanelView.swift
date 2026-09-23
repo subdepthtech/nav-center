@@ -58,6 +58,8 @@ struct CodexPanelView: View {
     @FocusState private var inputFocused: Bool
     @State private var allowEdits = false
     @State private var confirmedEdits = false
+    @State private var prompt = ""
+    @State private var draftPackageName: String?
 
     private var accountLabel: String {
         if let account = store.codexStatus?.account {
@@ -75,17 +77,6 @@ struct CodexPanelView: View {
             && store.codexStatus?.account != nil
             && !store.isCodexLoading
             && (!allowEdits || confirmedEdits)
-    }
-
-    private var prompt: String {
-        store.codexDrafts[store.selectedPackage?.package.name ?? ""] ?? ""
-    }
-
-    private var promptBinding: Binding<String> {
-        Binding(
-            get: { prompt },
-            set: { store.codexDrafts[store.selectedPackage?.package.name ?? ""] = $0 }
-        )
     }
 
     private var selectedPackageLabel: String {
@@ -128,11 +119,19 @@ struct CodexPanelView: View {
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.24), radius: 26, y: 12)
+        .onAppear {
+            draftPackageName = store.selectedPackage?.package.name
+            prompt = store.codexDraft(for: draftPackageName)
+        }
+        .onDisappear { saveDraft() }
         .task {
             inputFocused = true
             await store.refreshCodexStatus()
         }
         .onChange(of: store.selectedPackage?.package.name) { _ in
+            saveDraft()
+            draftPackageName = store.selectedPackage?.package.name
+            prompt = store.codexDraft(for: draftPackageName)
             confirmedEdits = false
             allowEdits = false
         }
@@ -277,7 +276,7 @@ struct CodexPanelView: View {
                     .lineLimit(1)
             }
 
-            TextEditor(text: promptBinding)
+            TextEditor(text: $prompt)
                 .focused($inputFocused)
                 .accessibilityIdentifier(AccessibilityID.codexInput)
                 .accessibilityLabel("Message to Codex")
@@ -311,11 +310,15 @@ struct CodexPanelView: View {
                     let message = prompt
                     let editsAllowed = allowEdits
                     let editsConfirmed = confirmedEdits
-                    let packageName = store.selectedPackage?.package.name
-                    store.codexDrafts[packageName ?? ""] = ""
+                    let packageName = draftPackageName
+                    saveDraft()
                     confirmedEdits = false
                     Task {
-                        await store.sendCodexMessage(message, allowEdits: editsAllowed, confirmed: editsConfirmed, packageName: packageName)
+                        let outcome = await store.sendCodexMessage(message, allowEdits: editsAllowed, confirmed: editsConfirmed, packageName: packageName)
+                        if outcome == .started {
+                            store.saveCodexDraft("", for: packageName)
+                            if draftPackageName == packageName && prompt == message { prompt = "" }
+                        }
                     }
                 } label: {
                     Label(store.isCodexLoading ? "Sending" : "Send", systemImage: "paperplane.fill")
@@ -343,6 +346,10 @@ struct CodexPanelView: View {
             }
         }
         .padding(14)
+    }
+
+    private func saveDraft() {
+        store.saveCodexDraft(prompt, for: draftPackageName)
     }
 
     private var emptyChatMessage: String {
