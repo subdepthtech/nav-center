@@ -33,7 +33,7 @@ final class CreatorReadinessTests: XCTestCase {
         let server = Process()
         server.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
         server.arguments = ["-u", "-c", #"""
-        import http.server,sys
+        import http.server,os,sys
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
                 with open(sys.argv[2], 'a') as f: f.write(self.path+'\n')
@@ -43,7 +43,9 @@ final class CreatorReadinessTests: XCTestCase {
                 self.send_response(200);self.end_headers();self.wfile.write(body)
             def log_message(self,*args): pass
         server=http.server.HTTPServer(('127.0.0.1',0),Handler)
-        open(sys.argv[1],'w').write(str(server.server_port))
+        # HTTPServer binds and listens in its constructor; atomic rename publishes readiness.
+        with open(sys.argv[1]+'.tmp','w') as f: f.write(str(server.server_port))
+        os.replace(sys.argv[1]+'.tmp',sys.argv[1])
         server.serve_forever()
         """#, portFile.path, hitsFile.path]
         let errors = Pipe()
@@ -55,7 +57,13 @@ final class CreatorReadinessTests: XCTestCase {
         guard FileManager.default.fileExists(atPath: portFile.path) else {
             XCTFail("Synthetic HTTP listener did not start: " + String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)); return
         }
-        let port = try String(contentsOf: portFile)
+        let rawPort = (try? String(contentsOf: portFile)) ?? "<unreadable>"
+        guard let port = UInt16(rawPort.trimmingCharacters(in: .whitespacesAndNewlines)), port != 0 else {
+            if server.isRunning { server.terminate(); server.waitUntilExit() }
+            XCTFail("Synthetic HTTP listener published invalid port \(String(reflecting: rawPort)): "
+                + String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))
+            return
+        }
         let creator = ApplicationCreator(repoRoot: root)
         for host in ["127.0.0.1", "127.1", "2130706433", "0x7f000001", "localhost", "[::1]", "[::ffff:127.0.0.1]", "[::ffff:7f00:1]", "169.254.169.254", "10.0.0.1", "[fc00::1]"] {
             XCTAssertThrowsError(try creator.create(options: options(.url("http://\(host):\(port)/blocked"))), host)
