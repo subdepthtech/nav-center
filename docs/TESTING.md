@@ -4,7 +4,7 @@ Use synthetic fixtures and disposable workspaces. Do not point checks at real re
 
 ## Native toolchain
 
-CI selects `/Applications/Xcode_26.6.app` on the `macos-26` arm64 runner. The `native-quality/toolchain.txt` artifact records the Swift compiler version for each hosted run. The package deployment minimum is macOS 26.
+CI selects `/Applications/Xcode_26.6.app` on the `macos-26` arm64 runner. The `native-quality/toolchain.txt` artifact records the Swift compiler version for each hosted run. Check that version against [SonarCloud's documented Swift support](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/languages/swift) before enabling Sonar analysis. The package deployment minimum is macOS 26.
 
 Use an installed, user-licensed full Xcode. Command Line Tools alone are not a substitute for the SwiftUI macro, XCTest, SourceKit and SDK combination this project needs. Accept an installed Xcode license on the user's behalf only with explicit authorization in the current task, as described in `AGENTS.md`; that authorization also applies to delegated agents working on the task. Preserve OS privilege requirements and verify acceptance before retrying native checks. If the named version is installed elsewhere, use its actual path and record the difference.
 

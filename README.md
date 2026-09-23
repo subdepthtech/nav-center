@@ -11,7 +11,7 @@ This is a beta source tree extracted from a private workflow. The repository con
 ## Requirements
 
 - macOS 26 or later (Apple silicon)
-- Swift 5.9 or later
+- Xcode 26 or later (Swift 6.2 or later) to build from source
 - System SQLite library for tracker-backed views (no `sqlite3` command required)
 - System Ruby for bounded, safe master-resume YAML validation
 - Optional: Pandoc with `--sandbox` support, Google Chrome, and Poppler `pdftotext` for document export

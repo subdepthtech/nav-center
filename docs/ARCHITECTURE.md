@@ -4,7 +4,7 @@ Nav Center is a native macOS application and companion CLI for local job-applica
 
 ## Compiler and package boundaries
 
-[`Package.swift`](../Package.swift) uses Swift tools 5.9, declares macOS 13 as the deployment minimum, and has no third-party Swift package dependencies.
+[`Package.swift`](../Package.swift) uses Swift tools 5.9, declares macOS 26 as the deployment minimum (`.macOS("26.0")`), and has no third-party Swift package dependencies.
 
 | Target / product | Responsibilities | Dependencies and platform boundary |
 | --- | --- | --- |

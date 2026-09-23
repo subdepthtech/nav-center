@@ -4,7 +4,7 @@ This inventory describes source dependencies, not a complete binary SBOM. Review
 
 | Component | Current boundary | License / update responsibility |
 | --- | --- | --- |
-| Nav Center source | Core library, SwiftUI executable, CLI; Swift tools 5.9, macOS 13 minimum | Repository MIT license |
+| Nav Center source | Core library, SwiftUI executable, CLI; Swift tools 5.9, macOS 26 minimum | Repository MIT license |
 | SwiftPM packages | No declared third-party dependencies or Package.resolved | Add SwiftPM Dependabot when dependencies exist; review transitive licenses |
 | Apple frameworks and toolchain | Foundation, Darwin, CryptoKit, SQLite3, SwiftUI, AppKit, PDFKit, UniformTypeIdentifiers, CoreFoundation | System/SDK dependencies; Apple agreement remains user-owned |
 | Ruby, Pandoc, Chrome, Poppler | Optional/native runtime helpers, discovered on the user's machine | Not bundled by this tooling change; validate versions and licenses before bundling |

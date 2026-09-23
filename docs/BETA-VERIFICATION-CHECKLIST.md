@@ -36,11 +36,11 @@ Run `codex --version` only when the Codex CLI row in section 3 is Found. Copy th
 
 ## 1. Clean machine preconditions
 
-The advertised minimum is macOS 13 or later in `README.md`. `docs/BETA.md` does not yet have a Support matrix section. When that section exists, use its advertised row per docs/BETA.md support matrix. This beta is Apple silicon only.
+The advertised minimum is macOS 26 or later (the latest two major macOS releases); see the Support matrix in `docs/BETA.md`. This beta is Apple silicon only.
 
 | Step | Action | Expected | Pass/Fail |
 | --- | --- | --- | --- |
-| 1.1 | `sw_vers` | ProductVersion is the advertised minimum or newer (macOS 13 or later until docs/BETA.md support matrix says otherwise). | |
+| 1.1 | `sw_vers` | ProductVersion is 26.0 or newer (the advertised minimum in the docs/BETA.md support matrix). | |
 | 1.2 | `uname -m` | `arm64` | |
 | 1.3 | `command -v pandoc`; `command -v pdftotext`; `test ! -e "/Applications/Google Chrome.app" && echo absent` | `pandoc` and `pdftotext` are not on PATH. Chrome prints `absent`. No Homebrew pandoc, poppler, or Chrome. | |
 | 1.4 | `test ! -e "$HOME/Library/Application Support/Nav Center" && echo absent` | `absent`. No prior Nav Center support directory. | |
