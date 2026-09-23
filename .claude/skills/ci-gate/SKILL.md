@@ -36,7 +36,7 @@ default during iteration.
 - All build products, workspaces and logs live in one `mktemp -d` run directory.
   `NAV_CENTER_WORKSPACE_ROOT` points inside it and `NAV_CENTER_SKIP_VAULT_SYNC=1`
   is set, so the gate never touches the real Application Support workspace.
-- `DEVELOPER_DIR` is set to the pinned Xcode 26.3 when present; the actual
+- `DEVELOPER_DIR` is set to the pinned Xcode 26.6 when present; the actual
   toolchain, revision and working-tree dirt are recorded in
   `<run>/reports/native/toolchain.txt`.
 

@@ -4,7 +4,7 @@ Use synthetic fixtures and disposable workspaces. Do not point checks at real re
 
 ## Native toolchain
 
-CI selects `/Applications/Xcode_26.3.app` on the standard `macos-15` arm64 runner. The `native-quality/toolchain.txt` artifact from [main CI run 35733117014](https://github.com/subdepthtech/nav-center/actions/runs/35733117014) records macOS 15.7.9, Xcode 26.3 build `17C529`, and Apple Swift 6.2.4 (`swiftlang-6.2.4.1.4`). Its later `6.2.3` line is the swift-format version, not the compiler. Swift 6.2.4 is within [SonarCloud's documented Swift support through 6.3](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/languages/swift). The package deployment minimum remains macOS 13; a test on macOS 15 does not validate that minimum.
+CI selects `/Applications/Xcode_26.6.app` on the `macos-26` arm64 runner. The `native-quality/toolchain.txt` artifact records the Swift compiler version for each hosted run. The package deployment minimum is macOS 26.
 
 Use an installed, user-licensed full Xcode. Command Line Tools alone are not a substitute for the SwiftUI macro, XCTest, SourceKit and SDK combination this project needs. Accept an installed Xcode license on the user's behalf only with explicit authorization in the current task, as described in `AGENTS.md`; that authorization also applies to delegated agents working on the task. Preserve OS privilege requirements and verify acceptance before retrying native checks. If the named version is installed elsewhere, use its actual path and record the difference.
 
@@ -12,7 +12,7 @@ Run the examples from the repository root in one Bash session:
 
 ```bash
 set -euo pipefail
-export DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer
+export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer
 nav_check_root=$(mktemp -d "${TMPDIR:-/tmp}/nav-center-check.XXXXXX")
 nav_build_root="$nav_check_root/build"
 nav_report_root="$nav_check_root/reports/native"

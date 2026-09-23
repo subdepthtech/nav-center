@@ -49,7 +49,7 @@ cask "nav-center" do
   homepage "https://github.com/subdepthtech/nav-center"
 
   depends_on arch: :$ARCH
-  depends_on macos: ">= :ventura"
+  depends_on macos: ">= :tahoe"
 
   app "Nav Center.app"
   binary "#{appdir}/Nav Center.app/Contents/MacOS/navcenterctl"

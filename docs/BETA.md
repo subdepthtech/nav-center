@@ -4,7 +4,7 @@ Nav Center beta builds are local-first macOS builds for trusted testers. The app
 
 ## Install
 
-Apple silicon (arm64) only in this beta; Intel is not supported.
+macOS 26 or later, Apple silicon (arm64) only; Intel is not supported in this beta.
 
 Download the DMG and its `.sha256` from the GitHub prerelease, then verify the download:
 
@@ -18,6 +18,25 @@ The public `subdepthtech/nav-center` Homebrew tap is an alternative install of t
 brew tap subdepthtech/nav-center
 brew install --cask nav-center
 ```
+
+## Support matrix
+
+### Advertised
+
+| Requirement | Support |
+| --- | --- |
+| macOS | macOS 26 or later: the latest two major macOS releases (26 and 27); the minimum moves up when a new major macOS ships |
+| Architecture | Apple silicon (arm64) only; Intel is not supported in this beta (U6) |
+| Distribution | GitHub prerelease DMG; Homebrew tap is an alternative (U4) |
+
+### Tested
+
+| OS / build | Arch | Toolchain | Date | Evidence |
+| --- | --- | --- | --- | --- |
+| Maintainer Mac: macOS 27.0 (26A428) | arm64 | Xcode 27 / Swift 6.4 | 2026-09-22 | Full suite plus real-tool lane: [integration acceptance](setup-evidence/beta-0.1.0-beta.1/integration-acceptance.md) |
+| CI: GitHub macos-26 (26.6) | arm64 | Xcode 26.6 | Per PR | Required "Build, test and release contracts" check; first run ID added after merge |
+| Release build: GitHub macos-26 | arm64 | Xcode 26.6 | WP11, not run yet | `beta-release.yml` |
+| Clean Mac (WP12) | Pending | Pending | Pending | Pending |
 
 1. Open the beta DMG.
 2. Drag `Nav Center.app` to `/Applications`.

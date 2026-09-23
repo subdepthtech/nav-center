@@ -111,11 +111,11 @@ struct ContentView: View {
         }
         .onPreferenceChange(AvailableHeightKey.self) { availableHeight = $0 }
         .onAppear { applyRequestedDestination() }
-        .onChange(of: store.requestedDestination) { _ in
+        .onChange(of: store.requestedDestination) { _, _ in
             applyRequestedDestination()
         }
-        .onChange(of: store.searchFocusRequest) { _ in searchFocused = true }
-        .onChange(of: store.noticeMessage) { message in
+        .onChange(of: store.searchFocusRequest) { _, _ in searchFocused = true }
+        .onChange(of: store.noticeMessage) { _, message in
             noticeDismissal?.cancel()
             guard let message else { return }
             NSAccessibility.post(
@@ -149,7 +149,7 @@ struct ContentView: View {
                 .padding()
             }
         }
-        .onChange(of: store.applicationSearch) { query in
+        .onChange(of: store.applicationSearch) { _, query in
             guard !query.isEmpty else { return }
             store.leavePackageDetailForSidebarNavigation()
             selection = .applications

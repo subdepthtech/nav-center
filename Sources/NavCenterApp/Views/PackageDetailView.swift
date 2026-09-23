@@ -46,11 +46,11 @@ struct PackageDetailView: View {
                 }
             }
             .onAppear { applyRequestedRailAction() }
-            .onChange(of: payload.package.name) { _ in
+            .onChange(of: payload.package.name) { _, _ in
                 pendingAction = nil
                 store.requestedRailAction = nil
             }
-            .onChange(of: store.requestedRailAction) { _ in applyRequestedRailAction() }
+            .onChange(of: store.requestedRailAction) { _, _ in applyRequestedRailAction() }
             .onExitCommand {
                 guard !store.isCodexPanelPresented else { return }
                 if pendingAction != nil { pendingAction = nil }

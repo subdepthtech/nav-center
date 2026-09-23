@@ -8,7 +8,7 @@ Use [SETUP.md](SETUP.md) for current completion and blockers, [TESTING.md](TESTI
 | --- | --- | --- |
 | Repository | Gitleaks 8.30.1 | Current source and full Git history, with redacted findings |
 | Workflows | actionlint 1.7.12; zizmor 1.30.1 auditor mode | YAML/expression/shell checks and workflow security |
-| Native | CI: Xcode 26.3 / Swift 6.2.4 ([observed artifact](https://github.com/subdepthtech/nav-center/actions/runs/35733117014)); local toolchain recorded in SETUP.md | Full builds, XCTest, real coverage, CLI and sanitizers |
+| Native | CI: Xcode 26.6 on macos-26 (Swift version recorded in the CI toolchain artifact); local toolchain recorded in SETUP.md | Full builds, XCTest, real coverage, CLI and sanitizers |
 | Formatting | Apple's official swift-format from the selected Xcode | Read-only style baseline; advisory during adoption |
 | Swift lint | SwiftLint 0.65.1 | Five correctness rules; no duplicate whitespace rules; advisory baseline |
 | Security | Existing CodeQL default setup, secret scanning, push protection | Preserve Swift/Actions extended analysis and repository secret controls |
@@ -43,7 +43,7 @@ The one zizmor exception is documented inline on Sonar's `workflow_run` trigger.
 
 CI uploads `native-quality` for 14 days, even on a failed native job when reports exist. Logs preserve real XCTest skips; integration-scope text explicitly identifies unrun Chrome/ATS/Codex/UI/signing work. Sanitizer/test/build failures fail CI. Formatting and SwiftLint failures are visibly reported as advisory outcomes during baseline calibration; a missing/invalid SwiftLint report still fails analysis-report validation.
 
-The initial September 16 formatter baseline came from Command Line Tools Swift 6.4, whose formatter reports version `main`. It is historical, not the pinned CI baseline. Use the exact successful Xcode 26.3 CI artifact before enforcing style. An inherited `try!` in `Utilities.swift` is also visible to the new focused rules. Resolve or explicitly review findings in a separate scoped source change; never silently reformat inherited implementation. Promote selected lint checks to required status only after a compatible hosted baseline and a clean intended revision.
+The initial September 16 formatter baseline came from Command Line Tools Swift 6.4, whose formatter reports version `main`. It is historical, not the pinned CI baseline. Use the exact successful Xcode 26.6 CI artifact before enforcing style. An inherited `try!` in `Utilities.swift` is also visible to the new focused rules. Resolve or explicitly review findings in a separate scoped source change; never silently reformat inherited implementation. Promote selected lint checks to required status only after a compatible hosted baseline and a clean intended revision.
 
 Coverage generation exports native `llvm-cov show` text and LLVM JSON. The validator rejects empty, duplicate, impossible-count, unmaintained, or external-path reports; converts verified source paths to repository-relative paths; and records source files absent from coverage. It does not invent missing coverage. Sonar consumes the text/SwiftLint JSON, not generic XML or an unrelated `.xcresult` converter.
 

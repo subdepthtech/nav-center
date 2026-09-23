@@ -74,11 +74,11 @@ struct ApplicationsView: View {
                 .padding(24)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onChange(of: store.applicationSearch) { _ in resetPage() }
-        .onChange(of: statusFilter) { _ in resetPage() }
-        .onChange(of: locationFilter) { _ in resetPage() }
-        .onChange(of: sourceFilter) { _ in resetPage() }
-        .onChange(of: store.statusMessage) { message in
+        .onChange(of: store.applicationSearch) { _, _ in resetPage() }
+        .onChange(of: statusFilter) { _, _ in resetPage() }
+        .onChange(of: locationFilter) { _, _ in resetPage() }
+        .onChange(of: sourceFilter) { _, _ in resetPage() }
+        .onChange(of: store.statusMessage) { _, message in
             statusBannerDismissal?.cancel()
             statusBanner = message
             guard let message else { return }
