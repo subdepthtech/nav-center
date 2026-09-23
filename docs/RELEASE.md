@@ -80,12 +80,15 @@ Nothing in this runbook is automated or run by assistants without explicit autho
 
 1. Dispatch `beta-release.yml` on main with `version` and `build`, and approve the `release` environment.
 2. Download the exact workflow artifact.
-3. Run `scripts/verify-release-artifact.sh <dmg> --expect-version <v> --expect-build <n>` on the downloaded bytes.
-4. `git tag -s v<version> <source sha from BUILD.txt>`, then push the tag. The source SHA is the first line of `BUILD.txt`.
-5. `gh release create v<version> --prerelease --verify-tag` with the DMG, `.sha256`, `.notary.json` and `BUILD.txt`, and notes (support matrix, known limits, how to send `navcenterctl feedback-diagnostics` output).
-6. `scripts/update-homebrew-cask.sh <version> <release dmg url> <sha256> arm64 <tap>/Casks/nav-center.rb <dmg>.notary.json`.
-7. Open a tap PR.
-8. After it merges, run `brew install --cask` on the clean machine. Record that pass in [BETA-VERIFICATION-CHECKLIST.md](BETA-VERIFICATION-CHECKLIST.md).
+3. Run `scripts/verify-release-artifact.sh <dmg> --expect-version <v> --expect-build <n>` on the downloaded bytes. Record the result in `docs/setup-evidence/beta-<version>/artifact-verification.md`.
+4. Record WP7 (`accessibility-checklist.md`) and WP8 Codex live acceptance (`integration-acceptance.md`) for the candidate. These gate sharing, not building: steps 1–3 may run first.
+5. WP12A: with explicit authorization, stage the verified files at a browser-download point so the download gets a quarantine attribute: a draft GitHub prerelease (`gh release create v<version> --draft --prerelease --target <source sha>` with the verified files; no tag is created while it is a draft, and draft assets are visible only to signed-in maintainers), or an equivalent staging location. Run WP12A of [BETA-VERIFICATION-CHECKLIST.md](BETA-VERIFICATION-CHECKLIST.md) on a clean supported Mac. Any data loss, Gatekeeper rejection or unrecoverable first-launch failure stops the release.
+6. `git tag -s v<version> <source sha from BUILD.txt>`, then push the tag. The source SHA is the first line of `BUILD.txt`.
+7. `gh release create v<version> --prerelease --verify-tag` with the DMG, `.sha256`, `.notary.json` and `BUILD.txt`, and notes (support matrix, known limits, how to send `navcenterctl feedback-diagnostics` output). If a draft was used in step 5, confirm its assets are the verified bytes and publish that draft as the prerelease instead of creating a second release.
+8. Invite one tester. Expand toward the U5 maximum of 10 only after evidence stays clean and WP12B passes.
+9. `scripts/update-homebrew-cask.sh <version> <release dmg url> <sha256> arm64 <tap>/Casks/nav-center.rb <dmg>.notary.json`.
+10. Open a tap PR.
+11. WP12B: After it merges, run `brew install --cask` on the clean machine. Record that pass in [BETA-VERIFICATION-CHECKLIST.md](BETA-VERIFICATION-CHECKLIST.md). Complete the Homebrew upgrade and zap rows there; only then advertise the tap route.
 
 ## Required proof before sharing
 

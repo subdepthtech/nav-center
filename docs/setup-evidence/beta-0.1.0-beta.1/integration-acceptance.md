@@ -42,4 +42,27 @@ Its summary recorded `"result": "fail"` and no lanes.
 
 ## Codex live acceptance (manual)
 
-Not run yet. It needs a human with a signed-in Codex CLI session and follows the checklist in `docs/TESTING.md` ("Codex live acceptance (manual)"). Record the result and `codex --version` here when it is run on the beta candidate.
+Status: in progress (2026-09-23). Not accepted until every row below is Pass.
+
+| Field | Value |
+| --- | --- |
+| Codex CLI version | codex-cli 0.156.1 |
+| Candidate | 0.1.0-beta.1 build 3, source ebe5448a2d6bc4e4b540d8125ab4d2c1e9316971 |
+| Preliminary build | local unsigned release preview built from the same SHA (build 1, ad-hoc signed, never distributed) |
+| Machine | macOS 27.0 (26A428), arm64, Apple M2 Pro |
+| Tester | Not recorded |
+| Date | 2026-09-23 |
+| Data | disposable synthetic workspace and package with invented company, role and text; no private data |
+
+| # | Check | Method | Preview (build 1) | Signed candidate (build 3) | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Record `codex --version` in the evidence. | Automated | Not run | Not run | |
+| 2 | A signed-in `codex app-server` starts from the Codex panel. | Human | Not run | Not run | |
+| 3 | One chat without edits completes. | Human | Not run | Not run | |
+| 4 | One chat proposing edits requires confirmation, then applies only to package Markdown. | Human | Not run | Not run | |
+| 5 | The staging directory has mode 0700. | Automated observation (sampler) | Not run | Not run | |
+| 6 | The server is stopped before changes are applied. | Automated observation (sampler) | Not run | Not run | |
+| 7 | Compare `ls -la ~/.codex` before and after; Nav Center does not modify it. | Automated (metadata listing only; contents never read) | Not run | Not run | |
+| 8 | No private data is used. | Attestation | Not run | Not run | |
+
+Method notes: the sampler polls every 0.1 s and records the mode of `$(getconf DARWIN_USER_TEMP_DIR)nav-center-codex-*`, whether the app's `codex app-server` child process is alive, and the modification times of the synthetic package's Markdown files; ordering is judged from those timestamps. The `~/.codex` comparison lists names, sizes and modification times only; the Codex CLI itself writes its own session, history and log files there during a chat, so the check is that no entry is created or changed that the Codex process does not own.
