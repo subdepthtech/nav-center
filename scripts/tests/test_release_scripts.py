@@ -721,7 +721,11 @@ class VendorNoticeTests(unittest.TestCase):
         notices = (REPO / "THIRD_PARTY_NOTICES.md").read_text()
         self.assertIn("vendor/atsim", notices)
         self.assertIn(commit, notices)
-        self.assertNotIn("Copyright", notices.split("## @opencode-ai/sdk", 1)[0].split("## atsim", 1)[1])
+        atsim_section = notices.split("## @opencode-ai/sdk", 1)[0].split("## atsim", 1)[1]
+        self.assertIn("MIT License", atsim_section)
+        self.assertIn("Copyright (c) 2026 Austin Tucker", atsim_section.splitlines())
+        self.assertIn("Permission is hereby granted, free of charge", atsim_section)
+        self.assertNotIn("PENDING UPSTREAM CONFIRMATION", atsim_section)
 
         synthetic_commit = "0123456789abcdef0123456789abcdef01234567"
         self.write_snapshot(synthetic_commit)
@@ -744,6 +748,13 @@ class VendorNoticeTests(unittest.TestCase):
         missing_file = self.run_verify()
         self.assertNotEqual(missing_file.returncode, 0)
         self.assertIn("THIRD_PARTY_NOTICES.md", missing_file.stderr)
+
+    def test_repository_notices_no_longer_block_distribution(self):
+        notices = (REPO / "THIRD_PARTY_NOTICES.md").read_text()
+        self.assertNotIn("PENDING UPSTREAM CONFIRMATION", notices)
+        verified = self.run_verify(REPO)
+        self.assertEqual(verified.returncode, 0, verified.stderr + verified.stdout)
+        self.assertNotIn("atsim notice is pending upstream confirmation", verified.stdout)
 
     def test_verify_vendor_reports_pending_confirmation_without_failing(self):
         commit = "0123456789abcdef0123456789abcdef01234567"
