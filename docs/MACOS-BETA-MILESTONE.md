@@ -1,6 +1,6 @@
 # Milestone: reliable, installable macOS beta
 
-Status: planning record, written 2026-09-22 against `main` `45293d38c7ceb69630444050aaa73afdd507f290`. This document authorizes nothing by itself. Each work package (WP) states whether it can proceed autonomously or needs credentials, a physical device, service terms, or explicit release authorization. CI success, a built DMG, or an uploaded artifact is never release acceptance; only the evidence named per WP is.
+Status: milestone plan, written 2026-09-22 against `main` `45293d38c7ceb69630444050aaa73afdd507f290`; current progress is recorded in §7. This document authorizes nothing by itself. Each work package (WP) states whether it can proceed autonomously or needs credentials, a physical device, service terms, or explicit release authorization. CI success, a built DMG, or an uploaded artifact is never release acceptance; only the evidence named per WP is.
 
 Out of scope for this milestone: iOS, any backend or hosted service, application submission, the interview voice pilot (P0–P5 of the 2026-09-18 plan), MCP/Apps SDK, public plugin-directory submission, Sonar activation, CodeRabbit, and feature expansion beyond what the WPs name.
 
@@ -63,18 +63,18 @@ Closeout verdict: complete for its stated scope (hardening baseline, protection,
 | R8 | No keyboard shortcuts for tracker status quick actions | They mutate the tracker without confirmation; a mis-key would change state |
 | R9 | Sonar stays off; not part of this milestone | Nothing in the beta gates needs it; onboarding is an owner service decision (`docs/TOOLING.md`) |
 | R10 | Build-provenance attestation deferred to the first signed candidate's follow-on, as `docs/RELEASE.md` already states | Adds OIDC write permissions; do it once a real artifact exists |
-| R11 | Every code slice is delegated via `python3 ~/.claude/skills/cli-router/scripts/delegate.py` (multi-file implementation row: codex `gpt-5.6-sol` effort `medium`, `--write --reason`; adversarial review: grok `grok-4.6` effort `high`, read-only); Claude Code plans, judges, runs the checks, runs `path-safety-reviewer` for any Core write path, and quotes the ledger row | Global CLAUDE.md delegation rule |
+| R11 | Route multi-file implementation through `python3 ~/.claude/skills/cli-router/scripts/delegate.py`: codex `gpt-6-sol` effort `medium`, `--write --reason`; adversarial review by grok `grok-4.7` effort `high`, read-only. The cli-router Opus 5.5 evaluator subagent judges results. Run `path-safety-reviewer` for Core write and subprocess paths. On 2026-09-22, WP1–WP5 were implemented and reviewed with grok `grok-4.7` effort `high` while codex and agy quotas were exhausted; each PR states this. | Record the routes actually used and the quota exception in each PR |
 
-### 2.2 Genuinely unresolved decisions (need the owner)
+### 2.2 Owner decisions
 
-| # | Decision | Options | Recommendation | Needed by |
-| --- | --- | --- | --- | --- |
-| U1 | Advertised minimum macOS | (a) keep 13 and test on a physical or VM macOS 13 device; (b) raise to 14 (oldest hosted image) and test 14 in CI; (c) keep 13 advertised but state "tested on 14+" | (b) unless a macOS 13 test device exists. Advertising an untested floor contradicts `RELEASE.md` | WP9 |
-| U2 | Apple credentials: Developer ID Application certificate (team `3364PH2HE3` signed the May build; the identity is no longer on this machine) and an App Store Connect API key for notarization, stored only as `release` environment secrets | provision now vs later | Provision before WP11; nothing else is blocked by it | WP11 |
-| U3 | atsim license text and copyright holder for `THIRD_PARTY_NOTICES.md` | (a) add a LICENSE upstream and re-snapshot or cite it; (b) supply the MIT text and holder directly to the notices file; (c) keep the placeholder and refuse `--distribution` while pending | (a) or (b), decided by the owner, who is also the upstream author; upstream has no LICENSE at HEAD, so "confirm with upstream" is an owner action, not a lookup; do not invent the text | WP1 / WP11 |
-| U4 | Homebrew tap semantics for the beta | keep tap as a documented install path (update cask per beta) vs DMG-only until GA | Keep the tap, but fix the caveat and only publish casks for notarized artifacts (R3) | WP10 |
-| U5 | Tester cohort and stop criteria for the controlled rollout | size, channel, what feedback halts distribution | Friends-and-family cohort ≤ 10, feedback via `feedback-diagnostics` output pasted into a private channel; halt on any data-loss or Gatekeeper report | WP13 |
-| U6 | Intel support after this beta | none / build on `macos-15-intel` later | Revisit after rollout feedback | after milestone |
+| # | Decision | Options | Recommendation | Decision (2026-09-22) | Needed by |
+| --- | --- | --- | --- | --- | --- |
+| U1 | Advertised minimum macOS | (a) keep 13 and test on a physical or VM macOS 13 device; (b) raise to 14 (oldest hosted image) and test 14 in CI; (c) keep 13 advertised but state "tested on 14+" | (b) unless a macOS 13 test device exists. Advertising an untested floor contradicts `RELEASE.md` | Decided: (d) support the latest two major macOS releases, macOS 26 and 27, so the minimum is macOS 26. This supersedes the owner's earlier same-day choice of (b), macOS 14. Every Apple silicon Mac can run macOS 26, and the beta is arm64-only, so no hardware is excluded. The PR gate and release build move to `macos-26` with Xcode 26.6, and the floor rises when a new major macOS ships | WP9 |
+| U2 | Apple credentials: Developer ID Application certificate (team `3364PH2HE3` signed the May build; the identity is no longer on this machine) and an App Store Connect API key for notarization, stored only as `release` environment secrets | provision now vs later | Provision before WP11; nothing else is blocked by it | Pending owner action. Verified 2026-09-22: the `release` environment has 0 secrets; required reviewer is `austinkennethtucker`. Only WP11 is blocked by credentials. | WP11 |
+| U3 | atsim license text and copyright holder for `THIRD_PARTY_NOTICES.md` | (a) add a LICENSE upstream and re-snapshot or cite it; (b) supply the MIT text and holder directly to the notices file; (c) keep the placeholder and refuse `--distribution` while pending | (a) or (b), decided by the owner, who is also the upstream author; upstream has no LICENSE at HEAD, so "confirm with upstream" is an owner action, not a lookup; do not invent the text | Decided (b): MIT License; copyright holder Austin Tucker, year 2026. | WP1 / WP11 |
+| U4 | Homebrew tap semantics for the beta | keep tap as a documented install path (update cask per beta) vs DMG-only until GA | Keep the tap, but fix the caveat and only publish casks for notarized artifacts (R3) | Decided: keep the tap as an alternative install path; update casks only from notarized artifacts with accepted notary evidence. WP10 implemented this in PR #12. | WP10 |
+| U5 | Tester cohort and stop criteria for the controlled rollout | size, channel, what feedback halts distribution | Friends-and-family cohort ≤ 10, feedback via `feedback-diagnostics` output pasted into a private channel; halt on any data-loss or Gatekeeper report | Decided: up to 10 friends and family; collect redacted `navcenterctl feedback-diagnostics` output or Help > Copy Redacted Diagnostics in a private channel. Any data loss, Gatekeeper rejection, or unrecoverable first-launch failure pauses distribution until fixed and re-verified through WP11–WP12. | WP13 |
+| U6 | Intel support after this beta | none / build on `macos-15-intel` later | Revisit after rollout feedback | Decided: none for this beta; Intel is not supported. Revisit after rollout feedback. | after milestone |
 
 ## 3. Work packages
 
@@ -163,7 +163,7 @@ Deferrable: if schedule pressure appears, this WP may slip past the beta without
 
 - Outcome: every actionable control has an accessibility identifier and label; the main sections, search, back, and the two confirmation-gated actions have keyboard shortcuts; focus lands sensibly; the window's minimum size does not clip the review pane; a manual VoiceOver checklist exists and is run once on the beta candidate.
 - Scope: new `Sources/NavCenterApp/Models/AccessibilityIdentifiers.swift` (namespaced registry: `sidebar.*`, `toolbar.*`, `package.rail.*`, `package.status.*`, `package.tab.*`, `cleanup.*`, `codex.*`, `settings.*`, `intake.*`, `resume.*`) applied to every Button/TextField/TextEditor/Picker/sidebar row; labels + `.help` on icon-only buttons; `StatCard`/`SummaryMetric` combined. Commands: `CommandMenu("Go")` ⌘1…⌘7 for destinations, ⌘, → Settings destination (R4), ⌘⇧C toggle Codex panel, ⌘[ back to list, ⌘⇧A open ATS confirm block, ⌘⇧E open Export confirm block, keep ⌘R; a Help-menu item "Copy Redacted Diagnostics" that puts the redacted `FeedbackDiagnostics` JSON on the pasteboard (same output as the CLI default after WP2); no status quick-action shortcuts (R8). Store gets `requestedDestination`/`requestedRailAction` consumed by `ContentView`. `@FocusState` for search (⌘F), Esc closes package detail, confirm blocks focus their primary button, Codex input focused on open. New `LayoutMetrics` (window 820×620, review pane minimum 480) replacing the 660 literal. `docs/TESTING.md` gains a "GUI/accessibility gate" manual checklist (VO tab order, announcements for rail/status/cleanup/Codex controls, shortcut behavior, 820×620 without clipping, Reduce Motion).
-- Do not touch: store business logic; `NativeCodexBridge`; `defaultFocus` (macOS 14+ only; minimum may still be 13 pending U1).
+- Do not touch: store business logic; `NativeCodexBridge`; `defaultFocus` (not needed; the macOS 26 minimum from U1 now allows it).
 - Dependencies: WP2, WP4, WP5 (their new controls need identifiers). PR boundary: one PR, last of the code PRs.
 - Acceptance: `grep -c accessibilityIdentifier Sources/NavCenterApp/Views/*.swift` ≥ 30 total; every `Button {` in Views has an identifier (reviewer spot-check); shortcuts visible in the menu bar; manual checklist recorded pass/fail per row.
 - Tests: new `AccessibilityReadinessTests`: `testEveryDestinationHasTitleSystemImageShortcutAndIdentifier`, `testRailAndStatusActionsExposeUniqueIdentifiersAndNonEmptyLabelsAndHelp`, `testAccessibilityIdentifierRegistryIsUniqueAndNamespaced`, `testKeyboardShortcutsAreUniqueAndAvoidReservedSystemKeys`, `testReviewWorkspaceMinimumHeightFitsMinimumWindow`; `DashboardParityTests.testRequestedDestinationClosesPackageDetailAndClears`.
@@ -183,14 +183,15 @@ Deferrable: if schedule pressure appears, this WP may slip past the beta without
 ### WP9 — Supported macOS versions and architectures — S/M
 
 - Outcome: README, BETA, cask, and Info.plist agree on what is advertised; docs say separately what is tested; CI exercises the oldest advertised hosted image.
-- Scope: depends on U1. If (b): `Package.swift` `.macOS(.v14)`, `MIN_SYSTEM_VERSION=14.0`, cask `depends_on macos: ">= :sonoma"`, README "macOS 14 or later (Apple silicon)"; add a `macos-14` arm64 build+test job to `ci.yml` (or a `workflow_dispatch`/weekly job if PR time matters; decide by measured runtime, PR job stays `macos-15`). If (a): same docs but a documented manual run on a macOS 13 device using WP12's checklist. Either way: a "Support matrix" section in `docs/BETA.md` with two columns, Advertised and Tested (OS build, arch, toolchain, date, evidence link); Intel stated as not supported in this beta (R2). Make `scripts/tests/test_release_scripts.py` assert that README/BETA/cask-template/`build-and-run.sh` minimum-version strings agree (single source: `scripts/tool-versions.json` gains `minimum_macos`).
+- Scope: U1 is decided as (d), the latest two major releases, so the minimum is macOS 26. Set `Package.swift` to `.macOS("26.0")`, `MIN_SYSTEM_VERSION=26.0` in the generated Info.plist, cask `depends_on macos: ">= :tahoe"`, and README "macOS 26 or later (Apple silicon)". Move the required PR job (`ci.yml`), the release workflow and the Sonar workflow from `macos-15`/Xcode 26.3 to `macos-26`/Xcode 26.6, so CI runs on the oldest supported OS; no separate compatibility job is needed. Add a "Support matrix" section to `docs/BETA.md` with Advertised and Tested columns (OS build, arch, toolchain, date, evidence link), including the policy that support follows the latest two major macOS releases. Intel is not supported (U6). Make `scripts/tests/test_release_scripts.py` assert that README, BETA, the cask and `build-and-run.sh` agree on the minimum version, with `scripts/tool-versions.json` `minimum_macos` as the single source.
 - Dependencies: U1 decided; WP1 (script tests structure). PR boundary: one PR.
 - Acceptance: one grep-able minimum version across the four places; CI job green on the oldest advertised image; the Tested column cites a run ID or evidence file for every row.
 - Evidence: CI run IDs; `docs/BETA.md` support matrix.
-- Autonomy: autonomous once U1 is answered; a macOS 13 run needs a physical device or VM.
+- Autonomy: autonomous; U1 is answered. The required PR check runs on `macos-26`, the advertised floor; macOS 27 is tested on the maintainer Mac until a hosted image exists.
 
 ### WP10 — Release metadata consistency and runbooks — M
 
+- Status: merged as PR #12 (`8380c0d`); U4 follows the recommended tap path with accepted notary evidence required for cask updates.
 - Outcome: the chain from a verified workflow artifact to a GitHub prerelease to a Homebrew cask is written down, tested where it is scriptable, and internally consistent; the stale cask caveat and the "distributed through the tap" wording are corrected.
 - Scope: `docs/RELEASE.md` gains a step-by-step runbook: dispatch `beta-release.yml` with version/build → download the exact artifact → re-verify locally with a new in-repo `scripts/verify-release-artifact.sh` (folding in `.claude/skills/release-evidence/verify-artifact.sh`, tested by `test_release_scripts.py`) that mounts the DMG read-only and runs `spctl -a -vv -t execute` on the mounted app, not the staging copy, and accepts a path-prefixed `.sha256` record only when the basename matches (the May `v0.1.0-beta` sidecar is path-prefixed) → `git tag -s v<version> <sha>` → `gh release create --prerelease` with DMG + `.sha256` + `BUILD.txt` → cask update with `scripts/update-homebrew-cask.sh` → tap PR → post-publish `brew install --cask` on the clean machine (WP12). `scripts/update-homebrew-cask.sh` caveat becomes conditional text derived from the verified `.notary.json` presence ("notarized and stapled" only when the notary JSON says Accepted), else the script refuses. `beta-release.yml` mount step additionally asserts `LICENSE` and `THIRD_PARTY_NOTICES.md` at the DMG root and that `CFBundleShortVersionString`/`CFBundleVersion`/`NavCenterVersion` in the mounted app match the inputs. `CHANGELOG.md` gets a `## 0.1.0-beta.1 (unreleased)` heading collecting the WP entries. `plugins/nav-center/.codex-plugin/plugin.json` `version` joins the single-source version check (WP9's `test_release_scripts.py` consistency test) so the plugin manifest and the DMG version cannot drift silently. README/BETA: DMG first, tap as alternative, both pointing at the same prerelease; the existing tap caveat contradiction is noted as historical for `0.1.0-beta`. Uninstall section and cask `zap` corrected to the verified data inventory (workspace dir; the preferences plist listed as "AppKit window state only, may not exist"; vault mirror is user-chosen and not removed).
 - Dependencies: WP1 (notices in DMG), WP9 (version strings). PR boundary: one PR (docs + scripts + workflow + release-script tests). Workflow edits go through `zizmor`/`actionlint` and `test_workflow_upload_follows_required_gates_and_uses_least_privilege` must still pass (update its pins deliberately).
@@ -201,7 +202,7 @@ Deferrable: if schedule pressure appears, this WP may slip past the beta without
 ### WP11 — Signed, notarized, stapled candidate — S (mostly waiting)
 
 - Outcome: one exact artifact `NavCenter-0.1.0-beta.1-macos-arm64.dmg` produced by `beta-release.yml` from a named `main` SHA, with `.sha256`, `.notary.json` (status Accepted), `BUILD.txt`, SBOM, notices; Gatekeeper verification observed inside the workflow on the mounted image.
-- Prerequisites (human): U2 credentials stored as `release` environment secrets (`DEVELOPER_ID_CERTIFICATE_BASE64`, `DEVELOPER_ID_CERTIFICATE_PASSWORD`, `DEVELOPER_ID_APPLICATION`, `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_PRIVATE_KEY`); U3 resolved (the `--distribution` build refuses the pending marker); the `release` environment reviewer approves the run.
+- Prerequisites (human): U2 credentials stored as `release` environment secrets (`DEVELOPER_ID_CERTIFICATE_BASE64`, `DEVELOPER_ID_CERTIFICATE_PASSWORD`, `DEVELOPER_ID_APPLICATION`, `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_PRIVATE_KEY`); U3 license terms recorded in `THIRD_PARTY_NOTICES.md` (the `--distribution` build still refuses a pending marker); the `release` environment reviewer approves the run.
 - Steps: dispatch with version `0.1.0-beta.1` and the chosen build; approve; download the artifact; run the in-repo verifier locally (checksum, `codesign --verify --deep --strict` on app and DMG, `spctl -a -vv -t execute` and `-t open --context context:primary-signature`, `stapler validate`, version strings, notices present). Record run ID, source SHA, toolchain from `BUILD.txt`.
 - Acceptance: every verifier check passes on the downloaded bytes, not the runner's; `.notary.json` status Accepted; checksum file matches post-staple bytes.
 - Evidence: `docs/setup-evidence/beta-0.1.0-beta.1/artifact-verification.md` (run ID, SHA, checksums, verifier output, `xcrun stapler validate` output). No credential material, no private paths.
@@ -218,8 +219,8 @@ Deferrable: if schedule pressure appears, this WP may slip past the beta without
 
 ### WP13 — Controlled beta rollout — S (human-driven)
 
-- Outcome: the verified artifact is published as a GitHub prerelease and (per U4) the cask is updated; a small tester cohort installs it; feedback is collected privacy-safely; a stop rule exists.
-- Steps: under explicit authorization: tag, `gh release create --prerelease` with the exact verified files and release notes (support matrix, known limits, how to send `feedback-diagnostics` output), tap PR via `update-homebrew-cask.sh`, then `brew install --cask` on the clean machine as the last WP12 step; invite the cohort (U5); triage feedback into issues; stop rule: any data loss, Gatekeeper rejection, or unrecoverable first-launch failure pauses the tap/release (mark prerelease as draft or add a warning note) until fixed and re-verified via WP11–WP12.
+- Outcome: the verified artifact is published as a GitHub prerelease and (per U4) the cask is updated from accepted notary evidence; up to 10 friends and family install it; feedback is collected privately and redacted; the U5 stop rule applies.
+- Steps: under explicit authorization: tag, `gh release create --prerelease` with the exact verified files and release notes (support matrix, known limits, how to send redacted `navcenterctl feedback-diagnostics` output or Help > Copy Redacted Diagnostics in a private channel), tap PR via `update-homebrew-cask.sh`, then `brew install --cask` on the clean machine as the last WP12 step; invite up to 10 friends and family; triage redacted feedback into issues. Any data loss, Gatekeeper rejection, or unrecoverable first-launch failure pauses distribution until fixed and re-verified through WP11–WP12.
 - Evidence: release URL, tap commit, cohort size, feedback summary (redacted) in `docs/setup-evidence/beta-0.1.0-beta.1/rollout.md`.
 - Autonomy: explicit release authorization; publishing steps are human-executed or human-approved per action.
 
@@ -247,9 +248,9 @@ flowchart LR
   WP12 --> WP13[WP13 rollout]
 ```
 
-Recommended merge order: WP0 → WP1 → WP2 → WP3 → WP4 → WP5 → WP6 → WP7 → WP8 → WP9 → WP10 → WP11 → WP12 → WP13. WP3/WP4 can run in parallel with each other after WP2; WP8 and WP9 can run in parallel after WP5. Decisions U1–U3 should be answered while WP1–WP4 are in flight so they never sit on the critical path.
+Original recommended merge order (superseded by §7): WP0 → WP1 → WP2 → WP3 → WP4 → WP5 → WP6 → WP7 → WP8 → WP9 → WP10 → WP11 → WP12 → WP13. WP3/WP4 could run in parallel with each other after WP2; WP8 and WP9 could run in parallel after WP5. U1 and U3 are decided; U2 remains an owner action before WP11.
 
-Critical path (longest dependent chain): WP1 → WP2 → WP5 → WP7 → WP11 → WP12 → WP13. The only external gates on it are U2 (credentials) and U3 (license text), both needed before WP11 and startable today.
+Critical path (longest dependent chain): WP1 → WP2 → WP5 → WP7 → WP11 → WP12 → WP13. U3 license text is now recorded; U2 credentials remain the owner action before WP11.
 
 ## 5. Verification per code PR (run by Claude Code, not the delegate)
 
@@ -268,4 +269,24 @@ Plus `path-safety-reviewer` for any Core write or subprocess path, a grok advers
 
 ## 6. First implementation task
 
-WP1 (attribution and notices). It is the smallest independent slice, it removes a documented distribution blocker, it touches no Swift, and it establishes the evidence pattern the later WPs reuse. Route: codex `gpt-5.6-sol` effort `medium`, `--write --reason "must add THIRD_PARTY_NOTICES.md and change build/package scripts, verify-vendor.py and their tests"`, then grok `grok-4.6` effort `high` read-only review, then the section 5 checks.
+Historical first task: WP1 (attribution and notices). WP1–WP5 are merged; their PRs record implementation and review with grok `grok-4.7` effort `high` during the codex and agy quota exhaustion on 2026-09-22. The current routing rule is R11.
+
+## 7. Status (2026-09-22)
+
+| WP | PR | Merge commit |
+| --- | --- | --- |
+| WP0 | #8 | `1b081b2` |
+| WP1 | #9 | `511c925` |
+| WP4 | #10 | `2fc11b6` |
+| WP2 | #11 | `747c6c2` |
+| WP10 | #12 | `8380c0d` |
+| WP12 checklist | #13 | `f370621` |
+| WP3 | #14 | `eb47054` |
+| WP5 | #15 | `46de4cf` |
+| WP8 | #16 | `18b796e` |
+| WP6 | #17 | `9bc9066` |
+| WP7 | #18 | `800ed29` |
+
+Open: WP9 (U1 decided as macOS 26+, in progress). Human-gated: WP7 VoiceOver/GUI checklist, WP8 Codex live checklist, U2 credentials, WP11, WP12, WP13.
+
+Autonomous endpoint verified on `main` `800ed29`: full checks green on plain, ASan, and TSan (268 tests); `build-and-run.sh --verify` passed. An unsigned internal DMG, build 2, contained LICENSE and notices and had correct version strings; it is never distributable.
