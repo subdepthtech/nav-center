@@ -63,7 +63,7 @@ Closeout verdict: complete for its stated scope (hardening baseline, protection,
 | R8 | No keyboard shortcuts for tracker status quick actions | They mutate the tracker without confirmation; a mis-key would change state |
 | R9 | Sonar stays off; not part of this milestone | Nothing in the beta gates needs it; onboarding is an owner service decision (`docs/TOOLING.md`) |
 | R10 | Build-provenance attestation deferred to the first signed candidate's follow-on, as `docs/RELEASE.md` already states | Adds OIDC write permissions; do it once a real artifact exists |
-| R11 | Route multi-file implementation through `python3 ~/.claude/skills/cli-router/scripts/delegate.py`: codex `gpt-6-sol` effort `medium`, `--write --reason`; adversarial review by grok `grok-4.7` effort `high`, read-only. The cli-router Opus 5.5 evaluator subagent judges results. Run `path-safety-reviewer` for Core write and subprocess paths. On 2026-09-22, WP1–WP5 were implemented and reviewed with grok `grok-4.7` effort `high` while codex and agy quotas were exhausted; each PR states this. | Record the routes actually used and the quota exception in each PR |
+| R11 | Route multi-file implementation through `python3 ~/.claude/skills/cli-router/scripts/delegate.py`: codex `gpt-6-sol` effort `medium`, `--write --reason`; adversarial review by grok `grok-4.7` effort `high`, read-only. The cli-router Opus 5.5 evaluator subagent judges results. Run `path-safety-reviewer` for Core write and subprocess paths. On 2026-09-22, while codex and agy were over quota, WP1–WP5 were implemented by grok `grok-4.7` effort `high`. Reviews were grok `grok-4.7` high for WP1–WP3, agy `claude-opus-4-6-thinking` for WP4, and codex `gpt-5.6-terra` for WP5 (fix slice codex `gpt-6-sol`) after the codex quota reset. Each PR records its routes. | Global CLAUDE.md delegation rule; routing follows `~/.claude/skills/cli-router/references/routing.md` |
 
 ### 2.2 Owner decisions
 
@@ -163,7 +163,7 @@ Deferrable: if schedule pressure appears, this WP may slip past the beta without
 
 - Outcome: every actionable control has an accessibility identifier and label; the main sections, search, back, and the two confirmation-gated actions have keyboard shortcuts; focus lands sensibly; the window's minimum size does not clip the review pane; a manual VoiceOver checklist exists and is run once on the beta candidate.
 - Scope: new `Sources/NavCenterApp/Models/AccessibilityIdentifiers.swift` (namespaced registry: `sidebar.*`, `toolbar.*`, `package.rail.*`, `package.status.*`, `package.tab.*`, `cleanup.*`, `codex.*`, `settings.*`, `intake.*`, `resume.*`) applied to every Button/TextField/TextEditor/Picker/sidebar row; labels + `.help` on icon-only buttons; `StatCard`/`SummaryMetric` combined. Commands: `CommandMenu("Go")` ⌘1…⌘7 for destinations, ⌘, → Settings destination (R4), ⌘⇧C toggle Codex panel, ⌘[ back to list, ⌘⇧A open ATS confirm block, ⌘⇧E open Export confirm block, keep ⌘R; a Help-menu item "Copy Redacted Diagnostics" that puts the redacted `FeedbackDiagnostics` JSON on the pasteboard (same output as the CLI default after WP2); no status quick-action shortcuts (R8). Store gets `requestedDestination`/`requestedRailAction` consumed by `ContentView`. `@FocusState` for search (⌘F), Esc closes package detail, confirm blocks focus their primary button, Codex input focused on open. New `LayoutMetrics` (window 820×620, review pane minimum 480) replacing the 660 literal. `docs/TESTING.md` gains a "GUI/accessibility gate" manual checklist (VO tab order, announcements for rail/status/cleanup/Codex controls, shortcut behavior, 820×620 without clipping, Reduce Motion).
-- Do not touch: store business logic; `NativeCodexBridge`; `defaultFocus` (not needed; the macOS 26 minimum from U1 now allows it).
+- Do not touch: store business logic; `NativeCodexBridge`; `defaultFocus` (not needed; allowed once WP9 raises the minimum to macOS 26).
 - Dependencies: WP2, WP4, WP5 (their new controls need identifiers). PR boundary: one PR, last of the code PRs.
 - Acceptance: `grep -c accessibilityIdentifier Sources/NavCenterApp/Views/*.swift` ≥ 30 total; every `Button {` in Views has an identifier (reviewer spot-check); shortcuts visible in the menu bar; manual checklist recorded pass/fail per row.
 - Tests: new `AccessibilityReadinessTests`: `testEveryDestinationHasTitleSystemImageShortcutAndIdentifier`, `testRailAndStatusActionsExposeUniqueIdentifiersAndNonEmptyLabelsAndHelp`, `testAccessibilityIdentifierRegistryIsUniqueAndNamespaced`, `testKeyboardShortcutsAreUniqueAndAvoidReservedSystemKeys`, `testReviewWorkspaceMinimumHeightFitsMinimumWindow`; `DashboardParityTests.testRequestedDestinationClosesPackageDetailAndClears`.
@@ -265,11 +265,11 @@ git log --format= --check --diff-merges=remerge "$(git merge-base main HEAD)..HE
 bash -n scripts/*.sh
 ```
 
-Plus `path-safety-reviewer` for any Core write or subprocess path, a grok adversarial review of the diff before the checks, and the ledger row quoted in the PR handoff. CI on Xcode 26.3 remains the toolchain-compatibility word; local Xcode 27 results are supplementary.
+Plus `path-safety-reviewer` for any Core write or subprocess path, a grok adversarial review of the diff before the checks, and the ledger row quoted in the PR handoff. CI on the pinned Xcode (26.3 on macos-15, moving to 26.6 on macos-26 with WP9) is the toolchain-compatibility word; local Xcode 27 results are supplementary.
 
 ## 6. First implementation task
 
-Historical first task: WP1 (attribution and notices). WP1–WP5 are merged; their PRs record implementation and review with grok `grok-4.7` effort `high` during the codex and agy quota exhaustion on 2026-09-22. The current routing rule is R11.
+Historical first task: WP1 (attribution and notices). WP1–WP5 are merged; they were implemented with grok `grok-4.7` effort `high` during the 2026-09-22 codex and agy quota exhaustion, and each PR records its implementation and review routes. The current routing rule is R11.
 
 ## 7. Status (2026-09-22)
 
