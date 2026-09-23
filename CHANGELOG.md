@@ -2,6 +2,7 @@
 
 ## 0.1.0-beta.1 (unreleased)
 
+- Known limit: Live voice interviews are not included in 0.1.0-beta.1. Realtime Interview currently creates a local session kit for an external client; it does not start audio or call a model.
 - The minimum supported macOS is now 26 (support follows the latest two major releases); CI and release builds run on macos-26 with Xcode 26.6.
 - Ship LICENSE and third-party notices in the app bundle and DMG; distribution builds refuse an unconfirmed notice.
 - Name the missing tool, its environment variable and an install hint when atsim, the export tools, Ruby or Codex are unavailable; `navcenterctl doctor` and Settings show every external tool; feedback diagnostics are redacted by default.

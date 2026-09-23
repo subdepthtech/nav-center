@@ -19,6 +19,8 @@ brew tap subdepthtech/nav-center
 brew install --cask nav-center
 ```
 
+Until a prerelease's release notes say its Homebrew route is verified, install that prerelease from its DMG; the tap can still serve the previous beta.
+
 1. Open the beta DMG.
 2. Drag `Nav Center.app` to `/Applications`.
 3. Launch the app.
@@ -96,6 +98,8 @@ Use the `nav-center-beta-feedback` skill to turn the issue, expected behavior, a
 Feedback drafts should not include private resume content, exact private file paths, account data, tracker databases, or unapproved attachments.
 
 ## Known Beta Limits
+
+- Live voice interviews are not included in 0.1.0-beta.1. Realtime Interview currently creates a local session kit for an external client; it does not start audio or call a model.
 
 Accepted versions are observed per run. The evidence link below is the intended record; do not treat a tool as accepted until that run and its results are recorded.
 

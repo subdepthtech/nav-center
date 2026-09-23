@@ -6,6 +6,15 @@ Write the filled record, the pass/fail tables, and the sign-off to `docs/setup-e
 
 `<version>` is the candidate version (the release example is `0.1.0-beta.1`, which writes `docs/setup-evidence/beta-0.1.0-beta.1/clean-machine-verification.md`).
 
+## Gates: WP12A and WP12B
+
+The split removes a circular dependency in the plan and waives neither gate.
+
+| Gate | Required coverage |
+| --- | --- |
+| WP12A (direct DMG; required before the first tester) | Sections 1–5; section 6 DMG-drag pass (6.1, 6.2, DMG half of 6.3, 6.4); 7.2; section 8. |
+| WP12B (Homebrew; required before advertising the tap or expanding beyond the first tester) | `brew install --cask nav-center` from the merged tap; brew half of 6.3 with its own 6.4; 7.1. |
+
 ## Record
 
 | Field | Value |
@@ -44,7 +53,7 @@ The advertised minimum is macOS 26 or later (the latest two major macOS releases
 | 1.2 | `uname -m` | `arm64` | |
 | 1.3 | `command -v pandoc`; `command -v pdftotext`; `test ! -e "/Applications/Google Chrome.app" && echo absent` | `pandoc` and `pdftotext` are not on PATH. Chrome prints `absent`. No Homebrew pandoc, poppler, or Chrome. | |
 | 1.4 | `test ! -e "$HOME/Library/Application Support/Nav Center" && echo absent` | `absent`. No prior Nav Center support directory. | |
-| 1.5 | In a browser, download the candidate DMG and its `.sha256` from the GitHub prerelease. Then `xattr -p com.apple.quarantine NavCenter-<version>-macos-arm64.dmg` | The command prints a quarantine value. | |
+| 1.5 | In a browser, download the candidate DMG and its `.sha256` from the published GitHub prerelease or, for WP12A before publication, an authorized staging point (a draft GitHub prerelease while signed in, or an equivalent browser-download location). Then `xattr -p com.apple.quarantine NavCenter-<version>-macos-arm64.dmg` | The command prints a quarantine value. | |
 | 1.6 | `shasum -a 256 -c NavCenter-<version>-macos-arm64.dmg.sha256` | The command prints `OK`. | |
 
 ## 2. Gatekeeper and offline first launch
@@ -99,18 +108,22 @@ Run this before the candidate is installed, on a second clean machine state, or 
 
 Do the DMG-drag upgrade and the Homebrew upgrade as two passes. Each pass starts from `v0.1.0-beta` plus its own synthetic data.
 
+The DMG-drag pass (6.1, 6.2, the DMG half of 6.3, and 6.4) belongs to WP12A. The Homebrew half of 6.3 with its own 6.4 belongs to WP12B.
+
 | Step | Action | Expected | Pass/Fail |
 | --- | --- | --- | --- |
 | 6.1 | From the `v0.1.0-beta` GitHub prerelease, download that DMG in a browser. `shasum -a 256 <v0.1.0-beta.dmg>` | The digest equals the published `.sha256` digest. Compare the digest only. That sidecar is path-prefixed (`dist/…`), so `shasum -c` does not see the downloaded basename. | |
-| 6.2 | Install `v0.1.0-beta` (drag to `/Applications` for the DMG pass). Create a synthetic package and edit the master resume with invented text. Read the build: `/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "/Applications/Nav Center.app/Contents/Info.plist"` | Synthetic package and master-resume text are on disk. The old build number is recorded. | |
+| 6.2 | Install `v0.1.0-beta` (drag to `/Applications` for the DMG pass). Create a synthetic package and edit the master resume with invented text. Read the build: `/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "/Applications/Nav Center.app/Contents/Info.plist"` | Synthetic package and master-resume text are on disk. The old build number is recorded. `v0.1.0-beta`'s Info.plist has no `CFBundleVersion` (PlistBuddy prints `Does Not Exist`); record the old build as absent. | |
 | 6.3 | Install the candidate over that app by dragging the candidate DMG's `Nav Center.app` to `/Applications` and replacing. On a separate `v0.1.0-beta` state, after the tap PR is merged: `brew update` and `brew upgrade --cask nav-center`. | Each method leaves the app installed. The brew pass uses the updated `subdepthtech/nav-center` cask. | |
-| 6.4 | Relaunch. Open the synthetic package and Master Resume. Open Settings. | The synthetic package and master-resume text are intact. Settings shows the candidate version and a build number greater than the `v0.1.0-beta` build from step 6.2. | |
+| 6.4 | Relaunch. Open the synthetic package and Master Resume. Open Settings. | The synthetic package and master-resume text are intact. Settings shows the candidate version and a build number; that build number is greater than the `v0.1.0-beta` build from step 6.2, or step 6.2 recorded the old build as absent. | |
 
 ## 7. Uninstall
 
 Run `brew uninstall --cask --zap nav-center` on a Homebrew install, and the manual steps on a DMG install. Reinstall between the two if you have only one machine.
 
 Before either removal, pick a vault directory outside the app and the support directory, for example `$HOME/nav-center-vault-synthetic`. Put a marker file in it. Point the app at it with `launchctl setenv NAV_CENTER_VAULT_DIR "$HOME/nav-center-vault-synthetic"` and relaunch once.
+
+The manual DMG uninstall in 7.2 belongs to WP12A. The Homebrew zap in 7.1 belongs to WP12B.
 
 | Step | Action | Expected | Pass/Fail |
 | --- | --- | --- | --- |
