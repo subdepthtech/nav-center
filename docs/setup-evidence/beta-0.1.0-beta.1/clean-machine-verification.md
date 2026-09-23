@@ -10,8 +10,8 @@ Any failure blocks WP13 rollout until fixed and re-verified through WP11–WP12.
 
 | Gate | Required coverage |
 | --- | --- |
-| WP12A (direct DMG; before the first tester) | Sections 1–5; section 6 DMG-drag pass (6.1, 6.2, DMG half of 6.3, 6.4); 7.2; section 8. |
-| WP12B (Homebrew; before advertising the tap or expanding beyond the first tester) | `brew install --cask nav-center` from the merged tap; brew half of 6.3 with its own 6.4; 7.1. |
+| WP12A (direct DMG; required before the first tester) | Sections 1–5; section 6 DMG-drag pass (6.1, 6.2, DMG half of 6.3, 6.4); 7.2; section 8. |
+| WP12B (Homebrew; required before advertising the tap or expanding beyond the first tester) | `brew install --cask nav-center` from the merged tap; brew half of 6.3 with its own 6.4; 7.1. |
 
 ## Record
 
@@ -82,16 +82,16 @@ Jordan Sample designs reliable test workflows and documents recovery steps for i
 | --- | --- | --- | --- | --- |
 | 1.1 | `sw_vers` | WP12A | Not run | |
 | 1.2 | `uname -m` | WP12A | Not run | |
-| 1.3 | `command -v pandoc`; `command -v pdftotext`; `test ! -e "/Applications/Google Chrome.ap… | WP12A | Not run | |
+| 1.3 | Check that `pandoc`, `pdftotext` and Google Chrome are absent | WP12A | Not run | |
 | 1.4 | `test ! -e "$HOME/Library/Application Support/Nav Center" && echo absent` | WP12A | Not run | |
-| 1.5 | In a browser, download the candidate DMG and its `.sha256` from the published GitHub pr… | WP12A | Not run | |
+| 1.5 | Download the candidate DMG and `.sha256` in a browser; check the quarantine attribute | WP12A | Not run | |
 | 1.6 | `shasum -a 256 -c NavCenter-<version>-macos-arm64.dmg.sha256` | WP12A | Not run | |
 
 ### 2. Gatekeeper and offline first launch
 
 | Step | Action | Gate | Pass/Fail | Observation |
 | --- | --- | --- | --- | --- |
-| 2.1 | `spctl -a -vv -t open --context context:primary-signature NavCenter-<version>-macos-arm… | WP12A | Not run | |
+| 2.1 | `spctl` open assessment of the candidate DMG | WP12A | Not run | |
 | 2.2 | `open NavCenter-<version>-macos-arm64.dmg` | WP12A | Not run | |
 | 2.3 | Drag `Nav Center.app` to `/Applications`. | WP12A | Not run | |
 | 2.4 | Turn networking off | WP12A | Not run | |
@@ -110,13 +110,13 @@ Jordan Sample designs reliable test workflows and documents recovery steps for i
 
 | Step | Action | Gate | Pass/Fail | Observation |
 | --- | --- | --- | --- | --- |
-| 4.1 | On Overview, choose Import Source Docs and import one synthetic file you created (inven… | WP12A | Not run | |
-| 4.2 | Paste a synthetic posting of at least 300 characters, with an invented company and role… | WP12A | Not run | |
+| 4.1 | Import one synthetic document from Overview | WP12A | Not run | |
+| 4.2 | Create a package from a pasted synthetic posting | WP12A | Not run | |
 | 4.3 | Open Master Resume, change a visible field to invented text, choose Save, then Reload. | WP12A | Not run | |
 | 4.4 | On the package, choose Applied, then Interview | WP12A | Not run | |
-| 4.5 | Rename that package directory so the `YYYY-MM-DD` prefix is a real date more than 7 day… | WP12A | Not run | |
+| 4.5 | Backdate the package more than 7 days, refresh, and preview cleanup | WP12A | Not run | |
 | 4.6 | Confirm removal in the review sheet (`Remove N Packages`). | WP12A | Not run | |
-| 4.7 | `/Applications/Nav\ Center.app/Contents/MacOS/navcenterctl restore-cleanup --workspace … | WP12A | Not run | |
+| 4.7 | `navcenterctl restore-cleanup` from the manifest | WP12A | Not run | |
 | 4.8 | With atsim absent, open the package, choose Run ATS Scan, and confirm. | WP12A | Not run | |
 | 4.9 | With Pandoc, Chrome, and pdftotext absent, read Export Artifacts on the package rail. | WP12A | Not run | |
 | 4.10 | `brew install pandoc poppler` | WP12A | Not run | |
@@ -135,7 +135,7 @@ Jordan Sample designs reliable test workflows and documents recovery steps for i
 | --- | --- | --- | --- | --- |
 | 6.1 | From the `v0.1.0-beta` GitHub prerelease, download that DMG in a browser | WP12A | Not run | |
 | 6.2 | Install `v0.1.0-beta` (drag to `/Applications` for the DMG pass) | WP12A | Not run | |
-| 6.3 (DMG pass) | Install the candidate over that app by dragging the candidate DMG's `Nav Center.app` to… | WP12A | Not run | |
+| 6.3 (DMG pass) | Drag the candidate app over `v0.1.0-beta` in `/Applications` | WP12A | Not run | |
 | 6.3 (Homebrew pass) | `brew update` and `brew upgrade --cask nav-center` on separate prior-beta state | WP12B | Not run | |
 | 6.4 (DMG pass) | Relaunch | WP12A | Not run | |
 | 6.4 (Homebrew pass) | Relaunch | WP12B | Not run | |
@@ -146,7 +146,7 @@ Jordan Sample designs reliable test workflows and documents recovery steps for i
 | Step | Action | Gate | Pass/Fail | Observation |
 | --- | --- | --- | --- | --- |
 | 7.1 | `brew uninstall --cask --zap nav-center` | WP12B | Not run | |
-| 7.2 | On a DMG install, quit Nav Center, move `/Applications/Nav Center.app` to Trash, then r… | WP12A | Not run | |
+| 7.2 | Manual DMG uninstall with the `docs/BETA.md` commands | WP12A | Not run | |
 
 ### 8. Sign-off
 
@@ -154,7 +154,7 @@ Jordan Sample designs reliable test workflows and documents recovery steps for i
 | --- | --- | --- | --- | --- |
 | 8.1 | Review sections 1–7. | WP12A | Not run | |
 | 8.2 | Fill tester and date in the Record table, and copy them into the evidence file. | WP12A | Not run | |
-| 8.3 | Copy this sentence into the evidence file: `Any failure blocks WP13 rollout until fixed… | WP12A | Not run | |
+| 8.3 | Copy the WP13 blocking sentence into the evidence file | WP12A | Not run | |
 
 ## Sign-off
 

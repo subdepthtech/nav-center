@@ -19,7 +19,7 @@ brew tap subdepthtech/nav-center
 brew install --cask nav-center
 ```
 
-Until the tap is updated for a prerelease after that prerelease's Homebrew verification, install that prerelease from its DMG, because the tap can still serve the previous beta.
+Until a prerelease's release notes say its Homebrew route is verified, install that prerelease from its DMG; the tap can still serve the previous beta.
 
 1. Open the beta DMG.
 2. Drag `Nav Center.app` to `/Applications`.

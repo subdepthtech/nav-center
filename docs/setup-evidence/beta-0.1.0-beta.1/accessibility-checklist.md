@@ -56,4 +56,5 @@ Human rows are observed by the maintainer (VoiceOver on where the row says Voice
 Accepted only when every row is Pass (or each failure has an issue link and an explicit owner decision) and every critical row is Pass on the signed candidate.
 
 Tester: Not recorded
+
 Date: Not recorded

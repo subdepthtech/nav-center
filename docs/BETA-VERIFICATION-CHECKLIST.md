@@ -8,12 +8,12 @@ Write the filled record, the pass/fail tables, and the sign-off to `docs/setup-e
 
 ## Gates: WP12A and WP12B
 
-Run the two passes on separate clean machine states and record each result. The split removes a circular dependency in the plan and waives neither gate.
+The split removes a circular dependency in the plan and waives neither gate.
 
 | Gate | Required coverage |
 | --- | --- |
-| WP12A (direct DMG; before the first tester) | Sections 1–5; section 6 DMG-drag pass (6.1, 6.2, DMG half of 6.3, 6.4); 7.2; section 8. |
-| WP12B (Homebrew; before advertising the tap or expanding beyond the first tester) | `brew install --cask nav-center` from the merged tap; brew half of 6.3 with its own 6.4; 7.1. |
+| WP12A (direct DMG; required before the first tester) | Sections 1–5; section 6 DMG-drag pass (6.1, 6.2, DMG half of 6.3, 6.4); 7.2; section 8. |
+| WP12B (Homebrew; required before advertising the tap or expanding beyond the first tester) | `brew install --cask nav-center` from the merged tap; brew half of 6.3 with its own 6.4; 7.1. |
 
 ## Record
 
@@ -115,7 +115,7 @@ The DMG-drag pass (6.1, 6.2, the DMG half of 6.3, and 6.4) belongs to WP12A. The
 | 6.1 | From the `v0.1.0-beta` GitHub prerelease, download that DMG in a browser. `shasum -a 256 <v0.1.0-beta.dmg>` | The digest equals the published `.sha256` digest. Compare the digest only. That sidecar is path-prefixed (`dist/…`), so `shasum -c` does not see the downloaded basename. | |
 | 6.2 | Install `v0.1.0-beta` (drag to `/Applications` for the DMG pass). Create a synthetic package and edit the master resume with invented text. Read the build: `/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "/Applications/Nav Center.app/Contents/Info.plist"` | Synthetic package and master-resume text are on disk. The old build number is recorded. `v0.1.0-beta`'s Info.plist has no `CFBundleVersion` (PlistBuddy prints `Does Not Exist`); record the old build as absent. | |
 | 6.3 | Install the candidate over that app by dragging the candidate DMG's `Nav Center.app` to `/Applications` and replacing. On a separate `v0.1.0-beta` state, after the tap PR is merged: `brew update` and `brew upgrade --cask nav-center`. | Each method leaves the app installed. The brew pass uses the updated `subdepthtech/nav-center` cask. | |
-| 6.4 | Relaunch. Open the synthetic package and Master Resume. Open Settings. | The synthetic package and master-resume text are intact. Settings shows the candidate version and a build number present and greater than the `v0.1.0-beta` build from step 6.2, or the old build was absent. | |
+| 6.4 | Relaunch. Open the synthetic package and Master Resume. Open Settings. | The synthetic package and master-resume text are intact. Settings shows the candidate version and a build number; that build number is greater than the `v0.1.0-beta` build from step 6.2, or step 6.2 recorded the old build as absent. | |
 
 ## 7. Uninstall
 
