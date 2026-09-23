@@ -45,8 +45,26 @@ struct PackageDetailView: View {
                         .frame(width: proxy.size.width, height: proxy.size.height)
                 }
             }
-            .onChange(of: payload.package.name) { _ in pendingAction = nil }
+            .onAppear { applyRequestedRailAction() }
+            .onChange(of: payload.package.name) { _ in
+                pendingAction = nil
+                store.requestedRailAction = nil
+            }
+            .onChange(of: store.requestedRailAction) { _ in applyRequestedRailAction() }
+            .onExitCommand {
+                guard !store.isCodexPanelPresented else { return }
+                if pendingAction != nil { pendingAction = nil }
+                else { store.closePackage() }
+            }
         )
+    }
+
+    private func applyRequestedRailAction() {
+        guard let action = store.requestedRailAction else { return }
+        if store.selectedPackage != nil && !store.isRunningAction && action.availability(store.toolAvailability).enabled {
+            pendingAction = action
+        }
+        store.requestedRailAction = nil
     }
 
     private func compactLayout(payload: PackageResponse) -> some View {
@@ -78,6 +96,8 @@ private struct PackageDetailMainContent: View {
                     Label("Applications", systemImage: "chevron.left")
                 }
                 .buttonStyle(.borderless)
+                .accessibilityIdentifier(AccessibilityID.packageBack)
+                .help("Back to applications")
 
                 Spacer()
                 LocalOnlyPill()
@@ -174,16 +194,18 @@ private struct PackageTabs: View {
             ViewThatFits(in: .horizontal) {
                 Picker("Package Tab", selection: tabSelection) {
                     ForEach(packageRecord.tabs) { tab in
-                        Text(tab.label).tag(tab.key)
+                        Text(tab.label).tag(tab.key).accessibilityIdentifier(AccessibilityID.packageTab(tab.key))
                     }
                 }
+                .accessibilityIdentifier(AccessibilityID.packageTab("selection"))
                 .pickerStyle(.segmented)
 
                 Picker("Package Tab", selection: tabSelection) {
                     ForEach(packageRecord.tabs) { tab in
-                        Text(tab.label).tag(tab.key)
+                        Text(tab.label).tag(tab.key).accessibilityIdentifier(AccessibilityID.packageTab(tab.key))
                     }
                 }
+                .accessibilityIdentifier(AccessibilityID.packageTab("selection"))
                 .pickerStyle(.menu)
                 .frame(maxWidth: 260, alignment: .leading)
             }
@@ -265,7 +287,7 @@ private struct ReviewWorkspace: View {
             }
         }
         .frame(
-            minHeight: fillAvailableHeight ? 420 : 660,
+            minHeight: LayoutMetrics.reviewPaneMinimumHeight(fillingAvailableHeight: fillAvailableHeight),
             maxHeight: fillAvailableHeight ? .infinity : nil
         )
         .layoutPriority(fillAvailableHeight ? 1 : 0)
@@ -276,7 +298,8 @@ private struct ReviewWorkspace: View {
             title: "Resume",
             subtitle: resumeSource?.relativePath ?? resumeHTML?.relativePath ?? "Package file missing",
             mode: $resumeMode,
-            modes: [("pdf", resumePDF == nil ? "Source Preview" : "PDF"), ("markdown", "Markdown")]
+            modes: [("pdf", resumePDF == nil ? "Source Preview" : "PDF"), ("markdown", "Markdown")],
+            modeIdentifier: AccessibilityID.packageReviewModePrimary
         ) {
             if resumeMode == "pdf", resumePDF != nil {
                 RawDocumentPreview(
@@ -284,10 +307,10 @@ private struct ReviewWorkspace: View {
                     openPDFFile: resumePDF,
                     fallbackMessage: "No generated resume preview found yet."
                 )
-                    .frame(minHeight: 420, maxHeight: .infinity)
+                    .frame(minHeight: fillAvailableHeight ? 200 : 420, maxHeight: .infinity)
             } else if let resumeSource {
                 FileTextPreview(file: resumeSource, rendered: resumeMode == "pdf", loadOnAppear: true)
-                    .frame(minHeight: 420, maxHeight: .infinity)
+                    .frame(minHeight: fillAvailableHeight ? 200 : 420, maxHeight: .infinity)
             } else {
                 EmptyStateView(title: "No resume source", message: "No Resume_*.md source file found in this package.")
             }
@@ -299,11 +322,12 @@ private struct ReviewWorkspace: View {
             title: "Job Description",
             subtitle: posting?.relativePath ?? "Package file missing",
             mode: $postingMode,
-            modes: [("preview", "Preview"), ("markdown", "Markdown")]
+            modes: [("preview", "Preview"), ("markdown", "Markdown")],
+            modeIdentifier: AccessibilityID.packageReviewModeSecondary
         ) {
             if let posting {
                 FileTextPreview(file: posting, rendered: postingMode == "preview", loadOnAppear: true)
-                    .frame(minHeight: 420, maxHeight: .infinity)
+                    .frame(minHeight: fillAvailableHeight ? 200 : 420, maxHeight: .infinity)
             } else {
                 EmptyStateView(title: "No posting", message: "No posting.md found in this package.")
             }
@@ -316,6 +340,7 @@ private struct ReviewPane<Content: View>: View {
     var subtitle: String
     @Binding var mode: String
     var modes: [(id: String, label: String)]
+    var modeIdentifier: String
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -368,6 +393,8 @@ private struct ReviewPane<Content: View>: View {
             }
         }
         .labelsHidden()
+        .accessibilityIdentifier(modeIdentifier)
+        .accessibilityLabel("\(title) view mode")
         .pickerStyle(.segmented)
         .frame(maxWidth: 190)
     }
@@ -491,6 +518,7 @@ private struct InterviewPrepWorkspace: View {
                 Label(hasKit ? "Refresh Kit" : "Build Kit", systemImage: "waveform")
             }
             .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier(AccessibilityID.packageInterviewPrepare)
             .disabled(store.isPreparingInterviewKit)
 
             Button {
@@ -500,6 +528,7 @@ private struct InterviewPrepWorkspace: View {
                 Label("Codex Review", systemImage: "sparkles")
             }
             .buttonStyle(.bordered)
+            .accessibilityIdentifier(AccessibilityID.packageInterviewPrompt)
             .disabled(!hasTranscript || store.isCodexLoading || store.codexStatus?.account == nil)
             .help(store.codexStatus?.account == nil ? "Sign in using the Codex chat panel first." : "Review this transcript with Codex and write interview-review.md after confirmation.")
         }
@@ -508,7 +537,9 @@ private struct InterviewPrepWorkspace: View {
                 let name = reviewPackageName
                 Task { await store.reviewRealtimeInterviewWithCodex(confirmed: true, packageName: name) }
             }
+            .accessibilityIdentifier(AccessibilityID.packageInterviewApprove)
             Button("Cancel", role: .cancel) {}
+                .accessibilityIdentifier(AccessibilityID.packageInterviewCancel)
         } message: {
             Text("Codex will process the posting, resume, and interview transcript from \(reviewPackageName ?? "this package") using your signed-in account and may update this package's markdown files to produce interview-review.md. Generated artifacts and tracker data are excluded.")
         }
@@ -538,6 +569,7 @@ private struct SummaryMetric: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -643,11 +675,14 @@ private struct FileCard: View {
                     store.filePreviewCache[file.relativePath] = nil
                     Task { await store.loadFilePreview(file) }
                 }
+                .accessibilityIdentifier(AccessibilityID.packageFilePreview(file.relativePath))
                 .disabled(store.isFilePreviewLoading(file))
             } else {
                 HStack {
                     Button("Open \(file.format.uppercased())") { openArtifact(reveal: false) }
+                        .accessibilityIdentifier(AccessibilityID.packageFileOpen(file.relativePath))
                     Button("Reveal in Finder") { openArtifact(reveal: true) }
+                        .accessibilityIdentifier(AccessibilityID.packageFileReveal(file.relativePath))
                 }
                 .accessibilityElement(children: .contain)
             }
@@ -727,6 +762,7 @@ private struct FileTextPreview: View {
                     Button("Load Preview") {
                         Task { await store.loadFilePreview(file) }
                     }
+                    .accessibilityIdentifier(AccessibilityID.packageFilePreview(file.relativePath))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -904,6 +940,7 @@ private struct RawDocumentPreview: View {
                 }
                 if let pdf = openPDFFile.flatMap(store.fileURL(for:)) {
                     Link("Open PDF", destination: pdf)
+                        .accessibilityIdentifier(AccessibilityID.packagePDFOpen)
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
@@ -1030,6 +1067,7 @@ private struct PackageRail: View {
 
 private struct PackageRailContent: View {
     @EnvironmentObject private var store: DashboardStore
+    @FocusState private var confirmFocused: Bool
     var packageRecord: ApplicationPackage
     @Binding var pendingAction: PackageAction?
 
@@ -1050,6 +1088,7 @@ private struct PackageRailContent: View {
                     PackageStatusButtons(packageName: packageRecord.name)
                     Text("Status History")
                         .font(.headline)
+                        .accessibilityIdentifier(AccessibilityID.statusHistoryList)
                     if let historyError = store.selectedPackage?.statusHistoryError {
                         Text(historyError)
                             .font(.caption)
@@ -1093,7 +1132,8 @@ private struct PackageRailContent: View {
                     .buttonStyle(.bordered)
                     .tint(action.isPrimary ? .blue : .secondary)
                     .disabled(store.isRunningAction || !availability.enabled)
-                    .help(availability.reason ?? "")
+                    .accessibilityIdentifier(AccessibilityID.packageRail(action))
+                    .help(availability.reason ?? action.confirmationTitle)
                 }
 
                 if let pendingAction {
@@ -1118,14 +1158,15 @@ private struct PackageRailContent: View {
                                 Task { await store.runConfirmedAction(actionKey, packageName: name) }
                             }
                             .buttonStyle(.borderedProminent)
+                            .focused($confirmFocused)
+                            .accessibilityIdentifier(AccessibilityID.packageRailConfirm)
 
-                            Button("Cancel") {
-                                self.pendingAction = nil
-                            }
+                            confirmationCancelButton
                         }
                     }
                     .padding(12)
                     .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                    .onAppear { confirmFocused = true }
                 }
             }
 
@@ -1172,6 +1213,18 @@ private struct PackageRailContent: View {
             }
         }
     }
+
+    @ViewBuilder
+    private var confirmationCancelButton: some View {
+        if store.isCodexPanelPresented {
+            Button("Cancel") { pendingAction = nil }
+                .accessibilityIdentifier(AccessibilityID.packageRailCancel)
+        } else {
+            Button("Cancel") { pendingAction = nil }
+                .accessibilityIdentifier(AccessibilityID.packageRailCancel)
+                .keyboardShortcut(.cancelAction)
+        }
+    }
 }
 
 private struct PackageStatusButtons: View {
@@ -1200,6 +1253,7 @@ private struct PackageStatusButtons: View {
             }
             .buttonStyle(.bordered)
             .disabled(store.isUpdatingStatus || packageName.isEmpty)
+            .accessibilityIdentifier(AccessibilityID.packageStatus(action))
             .help(action.help)
         }
     }

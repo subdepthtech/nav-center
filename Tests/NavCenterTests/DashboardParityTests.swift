@@ -227,6 +227,31 @@ final class DashboardParityTests: XCTestCase {
     }
 
     @MainActor
+    func testRequestedDestinationClosesPackageDetailAndClears() throws {
+        let service = IntakeDashboardService()
+        let store = DashboardStore(service: service)
+        store.selectedPackage = try service.fetchPackage(named: "fixture-package")
+        store.requestedDestination = .settings
+
+        XCTAssertEqual(store.applyRequestedDestination(), .settings)
+        XCTAssertNil(store.selectedPackage)
+        XCTAssertNil(store.requestedDestination)
+    }
+
+    @MainActor
+    func testCopyRedactedDiagnosticsUsesServiceAndReportsNotice() async {
+        let service = IntakeDashboardService()
+        var copied: String?
+        let store = DashboardStore(service: service, pasteboardWriter: { copied = $0 })
+
+        await store.copyRedactedDiagnostics()
+
+        XCTAssertEqual(copied, "{}")
+        XCTAssertEqual(store.noticeMessage, "Redacted diagnostics copied to the clipboard.")
+        XCTAssertNil(store.errorMessage)
+    }
+
+    @MainActor
     func testStoreCreatesPackageFromPastedPostingAndOpensItWithoutCodex() async {
         let service = IntakeDashboardService()
         let store = DashboardStore(service: service)
@@ -536,6 +561,7 @@ final class DashboardParityTests: XCTestCase {
 
 private final class IntakeDashboardService: DashboardServicing, @unchecked Sendable {
     let repoRoot = URL(fileURLWithPath: "/tmp/nav-center-intake-test")
+    func redactedDiagnosticsJSON() throws -> String { "{}" }
     var createdRequests: [JobDescriptionIntakeRequest] = []
     var savedMasterResumeContent = ""
     var sentCodexRequests: [CodexChatRequest] = []

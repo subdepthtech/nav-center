@@ -10,18 +10,55 @@ struct NavCenterApp: App {
         WindowGroup("Nav Center") {
             ContentView()
                 .environmentObject(store)
-                .frame(minWidth: 820, minHeight: 620)
+                .frame(minWidth: LayoutMetrics.minimumWindowSize.width, minHeight: LayoutMetrics.minimumWindowSize.height)
                 .task {
                     appDelegate.store = store
                     await store.bootstrap()
                 }
         }
-        .commands {
-            CommandGroup(after: .appInfo) {
-                Button("Refresh Dashboard") {
-                    Task { await store.refresh() }
-                }
-                .keyboardShortcut("r", modifiers: .command)
+        .commands { NavCenterCommands(store: store) }
+    }
+}
+
+struct NavCenterCommands: Commands {
+    @ObservedObject var store: DashboardStore
+
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) { }
+        CommandGroup(after: .appInfo) {
+            Button(KeyboardShortcutRegistry.refresh.title) {
+                Task { await store.refresh() }
+            }
+            .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.refresh.key.first!), modifiers: KeyboardShortcutRegistry.refresh.modifiers)
+        }
+        CommandMenu("Go") {
+            ForEach(Array(DashboardDestination.allCases.enumerated()), id: \.element.id) { index, destination in
+                Button(KeyboardShortcutRegistry.destinations[index].title) { store.requestedDestination = destination }
+                    .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.destinations[index].key.first!), modifiers: KeyboardShortcutRegistry.destinations[index].modifiers)
+            }
+            Divider()
+            Button(KeyboardShortcutRegistry.back.title) { store.closePackage() }
+                .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.back.key.first!), modifiers: KeyboardShortcutRegistry.back.modifiers)
+                .disabled(store.selectedPackage == nil)
+            Button(KeyboardShortcutRegistry.find.title) { store.searchFocusRequest += 1 }
+                .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.find.key.first!), modifiers: KeyboardShortcutRegistry.find.modifiers)
+            Button(KeyboardShortcutRegistry.codex.title) { store.isCodexPanelPresented.toggle() }
+                .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.codex.key.first!), modifiers: KeyboardShortcutRegistry.codex.modifiers)
+            Divider()
+            Button(KeyboardShortcutRegistry.ats.title) { store.requestedRailAction = .atsScan }
+                .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.ats.key.first!), modifiers: KeyboardShortcutRegistry.ats.modifiers)
+                .disabled(store.selectedPackage == nil || store.isRunningAction)
+            Button(KeyboardShortcutRegistry.export.title) { store.requestedRailAction = .exportArtifacts }
+                .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.export.key.first!), modifiers: KeyboardShortcutRegistry.export.modifiers)
+                .disabled(store.selectedPackage == nil || store.isRunningAction || !PackageAction.exportArtifacts.availability(store.toolAvailability).enabled)
+        }
+        CommandGroup(replacing: .appSettings) {
+            Button(KeyboardShortcutRegistry.settings.title) { store.requestedDestination = .settings }
+                .keyboardShortcut(KeyEquivalent(KeyboardShortcutRegistry.settings.key.first!), modifiers: KeyboardShortcutRegistry.settings.modifiers)
+        }
+        CommandGroup(after: .help) {
+            Button("Copy Redacted Diagnostics") {
+                Task { await store.copyRedactedDiagnostics() }
             }
         }
     }
@@ -51,6 +88,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         default:
             return .terminateCancel
         }
+    }
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Set before SwiftUI creates the first window so no tab bar can open a second one.
+        NSWindow.allowsAutomaticWindowTabbing = false
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

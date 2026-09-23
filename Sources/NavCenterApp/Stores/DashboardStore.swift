@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import NavCenterCore
 
 private struct CodexPackageConversation {
@@ -31,6 +32,7 @@ protocol DashboardServicing: AnyObject, Sendable {
     func sendCodexChat(_ payload: CodexChatRequest) throws -> CodexChatResponse
     func cancelCodexTurn() throws
     func fetchToolAvailability() throws -> ToolAvailabilityReport
+    func redactedDiagnosticsJSON() throws -> String
 }
 
 enum MasterResumeSaveOutcome: Equatable {
@@ -51,6 +53,9 @@ extension DashboardServicing {
     }
     func cancelCodexTurn() throws { throw DashboardAPIError.serverUnavailable("This service does not support cancellation.") }
     func fetchToolAvailability() throws -> ToolAvailabilityReport { .empty }
+    func redactedDiagnosticsJSON() throws -> String {
+        throw DashboardAPIError.serverUnavailable("Diagnostics are not available.")
+    }
     func fetchActions(packageName: String) -> ActionLogResponse {
         fetchActions(packageName: packageName, limit: 20)
     }
@@ -101,14 +106,35 @@ final class DashboardStore: ObservableObject {
     @Published var repoRootURL: URL?
     @Published var applicationSearch = ""
     @Published var dataWarningMessage: String?
+    @Published var requestedDestination: DashboardDestination?
+    @Published var isCodexPanelPresented = false
+    @Published var codexDrafts: [String: String] = [:]
+    @Published var requestedRailAction: PackageAction?
+    @Published var searchFocusRequest = 0
+    @Published var noticeMessage: String?
     @Published private(set) var previewRevision = UUID()
 
     var hasUnsavedMasterResume: Bool {
         masterResumeContent != (masterResumeSnapshot?.content ?? "")
     }
 
+    func codexDraft(for packageName: String?) -> String {
+        guard let packageName else { return "" }
+        return codexDrafts[packageName] ?? ""
+    }
+
+    func saveCodexDraft(_ draft: String, for packageName: String?) {
+        guard let packageName else { return }
+        if draft.isEmpty {
+            codexDrafts.removeValue(forKey: packageName)
+        } else if codexDrafts[packageName] != draft {
+            codexDrafts[packageName] = draft
+        }
+    }
+
     let appVersion: String = FeedbackDiagnostics.buildVersion
     private let service: DashboardServicing
+    private let pasteboardWriter: (String) -> Void
     private var codexConversations: [String: CodexPackageConversation] = [:]
     private let serviceQueue = DispatchQueue(label: "nav-center.local-services", qos: .userInitiated)
     private let codexQueue = DispatchQueue(label: "nav-center.codex-services", qos: .userInitiated)
@@ -118,10 +144,35 @@ final class DashboardStore: ObservableObject {
 
     init() {
         self.service = NativeDashboardService()
+        self.pasteboardWriter = { string in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(string, forType: .string)
+        }
     }
 
-    init(service: DashboardServicing) {
+    init(service: DashboardServicing, pasteboardWriter: @escaping (String) -> Void = { string in
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(string, forType: .string)
+    }) {
         self.service = service
+        self.pasteboardWriter = pasteboardWriter
+    }
+
+    func applyRequestedDestination() -> DashboardDestination? {
+        guard let destination = requestedDestination else { return nil }
+        leavePackageDetailForSidebarNavigation()
+        requestedDestination = nil
+        return destination
+    }
+
+    func copyRedactedDiagnostics() async {
+        do {
+            let json = try await background { try $0.redactedDiagnosticsJSON() }
+            pasteboardWriter(json)
+            noticeMessage = "Redacted diagnostics copied to the clipboard."
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func background<T>(codex: Bool = false, _ work: @escaping (DashboardServicing) throws -> T) async throws -> T {

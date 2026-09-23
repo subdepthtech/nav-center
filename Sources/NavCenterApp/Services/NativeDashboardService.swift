@@ -23,6 +23,13 @@ final class NativeDashboardService: @unchecked Sendable {
         ToolProbe.report(configuration: ToolProbeConfiguration(environment: environment))
     }
 
+    func redactedDiagnosticsJSON() throws -> String {
+        let report = FeedbackDiagnostics(workspaceRoot: repoRoot).report(redact: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        return String(decoding: try encoder.encode(report), as: UTF8.self)
+    }
+
     func fetchSummary() throws -> DashboardSummary {
         let data = try loadData()
         let today = DateFormatter.navCenterDay.string(from: Date())

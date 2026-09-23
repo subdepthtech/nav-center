@@ -107,7 +107,9 @@ struct ApplicationsView: View {
                 } label: {
                     Image(systemName: "xmark")
                 }
+                .accessibilityIdentifier(AccessibilityID.statusBannerDismiss)
                 .accessibilityLabel("Dismiss status message")
+                .help("Dismiss status message")
             }
             .padding(12)
             .background {
@@ -306,6 +308,7 @@ private struct ApplicationsSearchField: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
             TextField("Search companies, roles, or keywords...", text: $text)
+                .accessibilityIdentifier(AccessibilityID.applicationsSearch)
                 .textFieldStyle(.plain)
         }
         .padding(.horizontal, 14)
@@ -335,6 +338,7 @@ private struct ApplicationsFilterMenu: View {
                         Text(option)
                     }
                 }
+                .accessibilityIdentifier(AccessibilityID.applicationsFilterOption(title, option: option))
             }
         } label: {
             HStack {
@@ -350,6 +354,8 @@ private struct ApplicationsFilterMenu: View {
             .frame(height: 48)
             .contentShape(Rectangle())
         }
+        .accessibilityIdentifier(AccessibilityID.applicationsFilter(title))
+        .accessibilityLabel(title)
         .menuStyle(.borderlessButton)
         .buttonStyle(.plain)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
@@ -436,6 +442,8 @@ private struct ApplicationTableRow: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
             .disabled(application.packageName.isEmpty)
+            .accessibilityIdentifier(AccessibilityID.applicationsOpen(application.packageName.isEmpty ? application.id : application.packageName))
+            .accessibilityLabel("Open package")
             .help(application.packageName.isEmpty ? "No local package is available for this application." : "Open Package Detail")
         }
     }
@@ -529,6 +537,7 @@ private struct ApplicationCompactCard: View {
         }
         .buttonStyle(.bordered)
         .disabled(application.packageName.isEmpty)
+        .accessibilityIdentifier(AccessibilityID.applicationsOpen(application.packageName.isEmpty ? application.id : application.packageName))
         .help(application.packageName.isEmpty ? "No local package is available for this application." : "Open Package Detail")
     }
 }
@@ -550,6 +559,8 @@ private struct StatusActionButtons: View {
                 .buttonStyle(.bordered)
                 .controlSize(controlSize)
                 .disabled(store.isUpdatingStatus || application.packageName.isEmpty)
+                .accessibilityIdentifier(AccessibilityID.applicationsStatus(action, packageName: application.packageName.isEmpty ? application.id : application.packageName))
+                .accessibilityLabel(action.title)
                 .help(action.help)
             }
         }
@@ -643,6 +654,8 @@ private struct ApplicationsTableFooter: View {
                     .labelStyle(.iconOnly)
             }
             .disabled(currentPage == 0)
+            .accessibilityIdentifier(AccessibilityID.applicationsPagePrevious)
+            .accessibilityLabel("Previous page")
             .help("Previous page")
 
             Text("Page \(currentPage + 1) of \(pageCount)")
@@ -655,6 +668,8 @@ private struct ApplicationsTableFooter: View {
                     .labelStyle(.iconOnly)
             }
             .disabled(currentPage >= pageCount - 1)
+            .accessibilityIdentifier(AccessibilityID.applicationsPageNext)
+            .accessibilityLabel("Next page")
             .help("Next page")
         }
     }
