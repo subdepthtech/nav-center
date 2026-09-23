@@ -13,7 +13,7 @@ NAV_CENTER_VERSION=0.1.0-beta.1 NAV_CENTER_BUILD=1 \
 
 The name ends in `-unsigned.dmg`. This mode never invokes signing or notarization. Both packaging modes use `swift build -c release`; ordinary `scripts/build-and-run.sh build` defaults to debug. Set `NAV_CENTER_DIST_DIR` to an absolute temporary directory for isolated checks. Neither mode stops running app instances. Existing DMG, checksum, or notary-result outputs are refused rather than overwritten.
 
-`scripts/build-and-run.sh` stages `LICENSE` and `THIRD_PARTY_NOTICES.md` into the app bundle at `Contents/Resources`. `scripts/package-beta-dmg.sh` copies both files to the DMG root beside the app and the Applications symlink. `--distribution` refuses to build while `THIRD_PARTY_NOTICES.md` contains `PENDING UPSTREAM CONFIRMATION`. `--local` still builds an unsigned image when that marker is present and prints the unsigned warning.
+`scripts/build-and-run.sh` stages `LICENSE` and `THIRD_PARTY_NOTICES.md` into the app bundle at `Contents/Resources`. `scripts/package-beta-dmg.sh` copies both files to the DMG root beside the app and the Applications symlink. `--distribution` refuses to build while `THIRD_PARTY_NOTICES.md` contains `PENDING UPSTREAM CONFIRMATION`. `--local` still builds an unsigned image when that marker is present and prints the unsigned warning. The atsim license was confirmed on 2026-09-22, so the current notices contain no marker.
 
 ## Version and architecture
 
